@@ -24,6 +24,7 @@ export class AuthService {
   
   async register(data: RegisterDto): Promise<{ token: string; user: SafeUser }> {
     this.validateRegisterInput(data);
+    
 
     const existing = await User.findOne({ where: { email: data.email } });
     if (existing) throw new AppError(409, 'Email already in use');

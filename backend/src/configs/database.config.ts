@@ -53,7 +53,8 @@ export async function connectDatabase(): Promise<void> {
 }
 
 export async function syncDatabase(): Promise<void> {
-  // alter: true updates existing tables to match model definitions without dropping data
-  await sequelize.sync({ alter: true });
+  // alter: { drop: false } adds new columns/tables without trying to remove old columns
+  // (workaround for Sequelize v6 bug with MariaDB 3.x driver: "Cannot delete property 'meta'")
+  await sequelize.sync({ alter: { drop: false } });
   console.log('Database tables synchronized.');
 }
