@@ -49,13 +49,21 @@ Payment.belongsTo(Package, { foreignKey: 'package_id', as: 'package' });
 User.hasMany(Notification, { foreignKey: 'user_id', as: 'notifications' });
 Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 
+// Travel -> ForumMessage
+Travel.hasMany(ForumMessage, { foreignKey: 'travel_id', as: 'forum_messages' });
+ForumMessage.belongsTo(Travel, { foreignKey: 'travel_id', as: 'travel' });
+
+// User -> ForumMessage (auteur)
+User.hasMany(ForumMessage, { foreignKey: 'author_id', as: 'authored_messages' });
+ForumMessage.belongsTo(User, { foreignKey: 'author_id', as: 'author' });
+
 // ForumMessage self-reference (replies)
 ForumMessage.hasMany(ForumMessage, { foreignKey: 'parent_message_id', as: 'replies' });
 ForumMessage.belongsTo(ForumMessage, { foreignKey: 'parent_message_id', as: 'parent' });
 
 // User ↔ ForumMessage (N:M)
-User.belongsToMany(ForumMessage, { through: UserForumMessage, foreignKey: 'user_id', as: 'forum_messages' });
-ForumMessage.belongsToMany(User, { through: UserForumMessage, foreignKey: 'message_id', as: 'participants' });
+User.belongsToMany(ForumMessage, { through: UserForumMessage, foreignKey: 'user_id', as: 'read_messages' });
+ForumMessage.belongsToMany(User, { through: UserForumMessage, foreignKey: 'message_id', as: 'readers' });
 
 export { User, Travel, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage };
 export * from './User.model';
