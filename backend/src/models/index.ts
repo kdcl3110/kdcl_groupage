@@ -1,7 +1,7 @@
 import { sequelize } from '../configs/database.config';
 
 import { User } from './User.model';
-import { Groupage } from './Groupage.model';
+import { Travel } from './Travel.model';
 import { Recipient } from './Recipient.model';
 import { Package } from './Package.model';
 import { Payment } from './Payment.model';
@@ -9,7 +9,7 @@ import { Notification } from './Notification.model';
 import { ForumMessage, UserForumMessage } from './ForumMessage.model';
 
 User.initModel(sequelize);
-Groupage.initModel(sequelize);
+Travel.initModel(sequelize);
 Recipient.initModel(sequelize);
 Package.initModel(sequelize);
 Payment.initModel(sequelize);
@@ -17,20 +17,23 @@ Notification.initModel(sequelize);
 ForumMessage.initModel(sequelize);
 UserForumMessage.initModel(sequelize);
 
-
-// User -> Package (a client can have many packages)
+// User -> Package
 User.hasMany(Package, { foreignKey: 'client_id', as: 'packages' });
 Package.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
 
-// Groupage -> Package (a groupage contains many packages)
-Groupage.hasMany(Package, { foreignKey: 'groupage_id', as: 'packages' });
-Package.belongsTo(Groupage, { foreignKey: 'groupage_id', as: 'groupage' });
+// User -> Travel (un groupeur/admin crée des voyages)
+User.hasMany(Travel, { foreignKey: 'created_by', as: 'travels' });
+Travel.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
 
-// User -> Recipient (a client owns many recipients)
+// Travel -> Package
+Travel.hasMany(Package, { foreignKey: 'travel_id', as: 'packages' });
+Package.belongsTo(Travel, { foreignKey: 'travel_id', as: 'travel' });
+
+// User -> Recipient
 User.hasMany(Recipient, { foreignKey: 'client_id', as: 'recipients' });
 Recipient.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
 
-// Recipient -> Package (a recipient can receive many packages)
+// Recipient -> Package
 Recipient.hasMany(Package, { foreignKey: 'recipient_id', as: 'packages' });
 Package.belongsTo(Recipient, { foreignKey: 'recipient_id', as: 'recipient' });
 
@@ -38,7 +41,7 @@ Package.belongsTo(Recipient, { foreignKey: 'recipient_id', as: 'recipient' });
 User.hasMany(Payment, { foreignKey: 'client_id', as: 'payments' });
 Payment.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
 
-// Package -> Payment (one package has one payment)
+// Package -> Payment
 Package.hasOne(Payment, { foreignKey: 'package_id', as: 'payment' });
 Payment.belongsTo(Package, { foreignKey: 'package_id', as: 'package' });
 
@@ -50,21 +53,13 @@ Notification.belongsTo(User, { foreignKey: 'user_id', as: 'user' });
 ForumMessage.hasMany(ForumMessage, { foreignKey: 'parent_message_id', as: 'replies' });
 ForumMessage.belongsTo(ForumMessage, { foreignKey: 'parent_message_id', as: 'parent' });
 
-// User ↔ ForumMessage (N:M through UserForumMessage)
-User.belongsToMany(ForumMessage, {
-  through: UserForumMessage,
-  foreignKey: 'user_id',
-  as: 'forum_messages',
-});
-ForumMessage.belongsToMany(User, {
-  through: UserForumMessage,
-  foreignKey: 'message_id',
-  as: 'participants',
-});
+// User ↔ ForumMessage (N:M)
+User.belongsToMany(ForumMessage, { through: UserForumMessage, foreignKey: 'user_id', as: 'forum_messages' });
+ForumMessage.belongsToMany(User, { through: UserForumMessage, foreignKey: 'message_id', as: 'participants' });
 
-export { User, Groupage, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage };
+export { User, Travel, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage };
 export * from './User.model';
-export * from './Groupage.model';
+export * from './Travel.model';
 export * from './Recipient.model';
 export * from './Package.model';
 export * from './Payment.model';

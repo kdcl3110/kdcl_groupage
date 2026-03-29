@@ -2,7 +2,7 @@ import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 export enum PackageStatus {
   PENDING = 'pending',
-  IN_GROUPAGE = 'in_groupage',
+  IN_TRAVEL = 'in_travel',
   IN_TRANSIT = 'in_transit',
   DELIVERED = 'delivered',
   RETURNED = 'returned',
@@ -12,7 +12,7 @@ export enum PackageStatus {
 export interface PackageAttributes {
   package_id: number;
   client_id: number;
-  groupage_id: number | null;
+  travel_id: number | null;
   recipient_id: number;
   tracking_number: string;
   description: string;
@@ -30,7 +30,7 @@ export interface PackageCreationAttributes
   extends Optional<
     PackageAttributes,
     | 'package_id'
-    | 'groupage_id'
+    | 'travel_id'
     | 'tracking_number'
     | 'creation_date'
     | 'special_instructions'
@@ -41,7 +41,7 @@ export interface PackageCreationAttributes
 export class Package extends Model<PackageAttributes, PackageCreationAttributes> {
   declare package_id: number;
   declare client_id: number;
-  declare groupage_id: number | null;
+  declare travel_id: number | null;
   declare recipient_id: number;
   declare tracking_number: string;
   declare description: string;
@@ -70,10 +70,10 @@ export class Package extends Model<PackageAttributes, PackageCreationAttributes>
           allowNull: false,
           references: { model: 'user', key: 'user_id' },
         },
-        groupage_id: {
+        travel_id: {
           type: DataTypes.INTEGER.UNSIGNED,
           allowNull: true,
-          references: { model: 'groupage', key: 'groupage_id' },
+          references: { model: 'travel', key: 'travel_id' },
         },
         recipient_id: {
           type: DataTypes.INTEGER.UNSIGNED,
