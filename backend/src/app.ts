@@ -7,6 +7,9 @@ import morgan from 'morgan';
 import { env } from './configs/env.config';
 import { errorHandler, notFound } from './middlewares/errorHandler';
 import authRouter from './modules/auth/auth.router';
+import packageRouter from './modules/package/package.router';
+import groupageRouter from './modules/groupage/groupage.router';
+import recipientRouter from './modules/recipient/recipient.router';
 
 function createApp(): Application {
   const app = express();
@@ -54,6 +57,9 @@ function createApp(): Application {
 
   // API routes
   app.use('/api/v1/auth', authRouter);
+  app.use('/api/v1/packages', packageRouter);
+  app.use('/api/v1/groupages', groupageRouter);
+  app.use('/api/v1/recipients', recipientRouter);
 
   // Error handling
   app.use(notFound);

@@ -2,6 +2,7 @@ import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 export interface RecipientAttributes {
   recipient_id: number;
+  client_id: number;
   first_name: string;
   last_name: string;
   phone: string;
@@ -16,6 +17,7 @@ export interface RecipientCreationAttributes
 
 export class Recipient extends Model<RecipientAttributes, RecipientCreationAttributes> {
   declare recipient_id: number;
+  declare client_id: number;
   declare first_name: string;
   declare last_name: string;
   declare phone: string;
@@ -34,6 +36,11 @@ export class Recipient extends Model<RecipientAttributes, RecipientCreationAttri
           type: DataTypes.INTEGER.UNSIGNED,
           autoIncrement: true,
           primaryKey: true,
+        },
+        client_id: {
+          type: DataTypes.INTEGER.UNSIGNED,
+          allowNull: false,
+          references: { model: 'user', key: 'user_id' },
         },
         first_name: {
           type: DataTypes.STRING(100),

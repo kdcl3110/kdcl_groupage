@@ -8,11 +8,18 @@ export enum GroupageStatus {
   CANCELLED = 'cancelled',
 }
 
+export enum TransportType {
+  SHIP = 'ship',
+  PLANE = 'plane',
+}
+
 export interface GroupageAttributes {
   groupage_id: number;
+  transport_type: TransportType;
+  origin_country: string;
+  destination_country: string;
+  itinerary: string | null;
   status: GroupageStatus;
-  country: string;
-  itinerary: string;
   container: string | null;
   max_weight: number;
   max_volume: number;
@@ -26,14 +33,22 @@ export interface GroupageAttributes {
 export interface GroupageCreationAttributes
   extends Optional<
     GroupageAttributes,
-    'groupage_id' | 'creation_date' | 'container' | 'departure_date' | 'estimated_arrival_date'
+    | 'groupage_id'
+    | 'status'
+    | 'itinerary'
+    | 'container'
+    | 'creation_date'
+    | 'departure_date'
+    | 'estimated_arrival_date'
   > {}
 
 export class Groupage extends Model<GroupageAttributes, GroupageCreationAttributes> {
   declare groupage_id: number;
+  declare transport_type: TransportType;
+  declare origin_country: string;
+  declare destination_country: string;
+  declare itinerary: string | null;
   declare status: GroupageStatus;
-  declare country: string;
-  declare itinerary: string;
   declare container: string | null;
   declare max_weight: number;
   declare max_volume: number;
@@ -54,18 +69,27 @@ export class Groupage extends Model<GroupageAttributes, GroupageCreationAttribut
           autoIncrement: true,
           primaryKey: true,
         },
-        status: {
-          type: DataTypes.ENUM(...Object.values(GroupageStatus)),
+        transport_type: {
+          type: DataTypes.ENUM(...Object.values(TransportType)),
           allowNull: false,
-          defaultValue: GroupageStatus.OPEN,
         },
-        country: {
+        origin_country: {
+          type: DataTypes.STRING(100),
+          allowNull: false,
+        },
+        destination_country: {
           type: DataTypes.STRING(100),
           allowNull: false,
         },
         itinerary: {
           type: DataTypes.STRING(255),
+          allowNull: true,
+          comment: 'Optional free-text route description (e.g. "Bruxelles -> Douala via Paris")',
+        },
+        status: {
+          type: DataTypes.ENUM(...Object.values(GroupageStatus)),
           allowNull: false,
+          defaultValue: GroupageStatus.OPEN,
         },
         container: {
           type: DataTypes.STRING(100),
@@ -74,10 +98,12 @@ export class Groupage extends Model<GroupageAttributes, GroupageCreationAttribut
         max_weight: {
           type: DataTypes.DECIMAL(10, 2),
           allowNull: false,
+          comment: 'Max total weight in kg',
         },
         max_volume: {
           type: DataTypes.DECIMAL(10, 2),
           allowNull: false,
+          comment: 'Max total volume in m³',
         },
         min_load_percentage: {
           type: DataTypes.TINYINT.UNSIGNED,

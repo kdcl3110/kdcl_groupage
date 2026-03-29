@@ -26,7 +26,11 @@ Package.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
 Groupage.hasMany(Package, { foreignKey: 'groupage_id', as: 'packages' });
 Package.belongsTo(Groupage, { foreignKey: 'groupage_id', as: 'groupage' });
 
-// Recipient ->  Package (a recipient can receive many packages)
+// User -> Recipient (a client owns many recipients)
+User.hasMany(Recipient, { foreignKey: 'client_id', as: 'recipients' });
+Recipient.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
+
+// Recipient -> Package (a recipient can receive many packages)
 Recipient.hasMany(Package, { foreignKey: 'recipient_id', as: 'packages' });
 Package.belongsTo(Recipient, { foreignKey: 'recipient_id', as: 'recipient' });
 
