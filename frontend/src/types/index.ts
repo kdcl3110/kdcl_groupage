@@ -1,0 +1,79 @@
+export interface User {
+  user_id: number
+  first_name: string
+  last_name: string
+  email: string
+  role: 'admin' | 'freight_forwarder' | 'client'
+}
+
+export interface Travel {
+  travel_id: number
+  created_by: number
+  transport_type: 'ship' | 'plane'
+  origin_country: string
+  destination_country: string
+  itinerary: string | null
+  status: 'open' | 'full' | 'in_transit' | 'delivered' | 'cancelled'
+  container: string | null
+  max_weight: number
+  max_volume: number
+  min_load_percentage: number
+  max_load_percentage: number
+  creation_date: string
+  departure_date: string | null
+  estimated_arrival_date: string | null
+  packages_count: number
+  current_weight: number
+  current_volume: number
+  weight_fill_pct: number
+  volume_fill_pct: number
+  remaining_weight: number
+  remaining_volume: number
+}
+
+export interface Package {
+  package_id: number
+  client_id: number
+  travel_id: number | null
+  recipient_id: number
+  tracking_number: string
+  description: string
+  weight: number
+  volume: number
+  declared_value: number
+  status: 'pending' | 'in_travel' | 'in_transit' | 'delivered' | 'returned' | 'cancelled'
+  special_instructions: string | null
+  creation_date: string
+}
+
+export interface Recipient {
+  recipient_id: number
+  client_id: number
+  first_name: string
+  last_name: string
+  phone: string
+  email: string | null
+  address: string
+  city: string
+  country: string
+}
+
+export interface ForumMessage {
+  message_id: number
+  travel_id: number
+  author_id: number | null
+  message_type: 'system' | 'user'
+  parent_message_id: number | null
+  content: string
+  creation_date: string
+  author?: { user_id: number; first_name: string; last_name: string } | null
+}
+
+export interface Notification {
+  notification_id: number
+  user_id: number
+  title: string
+  content: string
+  is_read: boolean
+  creation_date: string
+}
