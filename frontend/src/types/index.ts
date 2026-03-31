@@ -43,6 +43,10 @@ export interface Package {
   declared_value: number
   status: 'pending' | 'in_travel' | 'in_transit' | 'delivered' | 'returned' | 'cancelled'
   special_instructions: string | null
+  image1: string
+  image2: string | null
+  image3: string | null
+  image4: string | null
   creation_date: string
 }
 

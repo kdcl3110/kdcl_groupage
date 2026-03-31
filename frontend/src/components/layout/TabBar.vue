@@ -134,7 +134,7 @@ function isActive(tab: (typeof tabs)[0]) {
   line-height: 0;
 }
 .tab-item__icon--active {
-  filter: drop-shadow(0 0 6px rgba(168, 19, 183, 0.7));
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--primary) 70%, transparent));
 }
 
 .tab-item__label {

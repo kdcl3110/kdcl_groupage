@@ -35,7 +35,7 @@ function formatDate(date: string) {
             class="sheet flex flex-col w-full max-w-[430px] md:max-w-[520px] md:rounded-3xl rounded-t-3xl px-5 pt-6 pb-[calc(24px+env(safe-area-inset-bottom,0px))]"
           >
             <!-- Handle -->
-            <div class="w-9 h-1 bg-[rgba(168,19,183,0.3)] rounded-full mx-auto mb-5" />
+            <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mb-5" />
 
             <!-- Header -->
             <div class="flex items-center justify-between mb-4">
@@ -62,11 +62,11 @@ function formatDate(date: string) {
                 v-for="notif in notifStore.notifications"
                 :key="notif.notification_id"
                 class="flex items-start gap-2.5 px-3 py-3.5 rounded-[14px] transition-colors"
-                :class="notif.is_read ? 'bg-transparent' : 'bg-[rgba(168,19,183,0.08)] border border-[rgba(168,19,183,0.15)]'"
+                :class="notif.is_read ? 'bg-transparent' : 'bg-[var(--primary-10)] border border-[var(--primary-15)]'"
               >
                 <div
                   v-if="!notif.is_read"
-                  class="w-2 h-2 rounded-full bg-[#A813B7] shadow-[0_0_6px_#A813B7] shrink-0 mt-1.5"
+                  class="w-2 h-2 rounded-full bg-[var(--primary)] shadow-[0_0_6px_var(--primary)] shrink-0 mt-1.5"
                 />
                 <div class="flex-1 min-w-0">
                   <p class="text-sm font-semibold text-app-primary mb-0.5">{{ notif.title }}</p>

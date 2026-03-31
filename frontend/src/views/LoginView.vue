@@ -2,23 +2,18 @@
 import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { authApi } from '@/api/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
 
+// panel: 'login' | 'register' | 'forgot'
+const panel = ref<'login' | 'register' | 'forgot'>('login')
+
+// ── Login ────────────────────────────────────────────────────────────────────
 const form = reactive({ email: '', password: '' })
 const error = ref('')
 const loading = ref(false)
-const showRegister = ref(false)
-
-const registerForm = reactive({
-  first_name: '',
-  last_name: '',
-  email: '',
-  password: '',
-})
-const registerError = ref('')
-const registerLoading = ref(false)
 
 async function handleLogin() {
   error.value = ''
@@ -38,6 +33,11 @@ async function handleLogin() {
   }
 }
 
+// ── Register ─────────────────────────────────────────────────────────────────
+const registerForm = reactive({ first_name: '', last_name: '', email: '', password: '' })
+const registerError = ref('')
+const registerLoading = ref(false)
+
 async function handleRegister() {
   registerError.value = ''
   if (!registerForm.first_name || !registerForm.last_name || !registerForm.email || !registerForm.password) {
@@ -46,11 +46,10 @@ async function handleRegister() {
   }
   registerLoading.value = true
   try {
-    const { authApi } = await import('@/api/auth')
     const { data } = await authApi.register(registerForm)
     localStorage.setItem('token', data.token)
     localStorage.setItem('user', JSON.stringify(data.user))
-    auth.login(registerForm.email, registerForm.password)
+    await auth.login(registerForm.email, registerForm.password)
     router.push('/voyages')
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } } }
@@ -59,59 +58,85 @@ async function handleRegister() {
     registerLoading.value = false
   }
 }
+
+// ── Forgot password ──────────────────────────────────────────────────────────
+const forgotEmail = ref('')
+const forgotError = ref('')
+const forgotLoading = ref(false)
+const forgotSent = ref(false)
+
+async function handleForgot() {
+  forgotError.value = ''
+  if (!forgotEmail.value) {
+    forgotError.value = 'Veuillez entrer votre adresse email.'
+    return
+  }
+  forgotLoading.value = true
+  try {
+    await authApi.forgotPassword(forgotEmail.value)
+    forgotSent.value = true
+  } catch (err: unknown) {
+    const e = err as { response?: { data?: { message?: string } } }
+    forgotError.value = e.response?.data?.message ?? 'Erreur lors de l\'envoi de l\'email.'
+  } finally {
+    forgotLoading.value = false
+  }
+}
+
+function goToLogin() {
+  panel.value = 'login'
+  forgotSent.value = false
+  forgotEmail.value = ''
+  forgotError.value = ''
+}
 </script>
 
 <template>
   <div class="min-h-dvh flex items-center justify-center px-4 py-8 sm:p-8 relative overflow-hidden">
     <!-- Bg glow -->
-    <div class="absolute -top-[150px] left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-[radial-gradient(circle,rgba(168,19,183,0.25)_0%,transparent_70%)] pointer-events-none" />
+    <div class="absolute -top-[150px] left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-[radial-gradient(circle,var(--primary-25)_0%,transparent_70%)] pointer-events-none" />
 
     <div class="w-full max-w-[460px] flex flex-col items-center gap-6">
       <!-- Logo -->
       <div class="flex flex-col items-center gap-3 text-center">
-        <div class="drop-shadow-[0_0_20px_rgba(168,19,183,0.5)]">
+        <div class="drop-shadow-[0_0_20px_var(--primary-50)]">
           <svg width="56" height="56" viewBox="0 0 48 48" fill="none">
             <rect width="48" height="48" rx="16" fill="url(#login-lg1)" />
             <text x="24" y="33" text-anchor="middle" font-family="Inter,sans-serif" font-weight="800" font-size="18" fill="white">KG</text>
             <defs>
               <linearGradient id="login-lg1" x1="0" y1="0" x2="48" y2="48">
-                <stop offset="0%" stop-color="#c91fd6"/>
-                <stop offset="100%" stop-color="#8a0f97"/>
+                <stop offset="0%" style="stop-color: var(--primary-light)"/>
+                <stop offset="100%" style="stop-color: var(--primary-dark)"/>
               </linearGradient>
             </defs>
           </svg>
         </div>
-        <h1 class="text-[28px] font-extrabold bg-gradient-to-br from-[#d946ef] via-[#a813b7] to-[#6366f1] bg-clip-text text-transparent tracking-tight">KDCL Groupage</h1>
+        <h1 class="text-[28px] font-extrabold bg-gradient-to-br from-[var(--primary-light)] via-[var(--primary)] to-[#6366f1] bg-clip-text text-transparent tracking-tight">KDCL Groupage</h1>
         <p class="text-base text-app-muted">Gestion de fret intelligente</p>
       </div>
 
-      <!-- Login Card -->
-      <div v-if="!showRegister" class="glass w-full rounded-[24px] p-6 sm:p-8 flex flex-col gap-5">
+      <!-- ── Login Card ── -->
+      <div v-if="panel === 'login'" class="glass w-full rounded-[24px] p-6 sm:p-8 flex flex-col gap-5">
         <h2 class="text-[22px] font-bold text-app-primary">Se connecter</h2>
 
         <form @submit.prevent="handleLogin" class="flex flex-col gap-4">
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Adresse email</label>
-            <input
-              v-model="form.email"
-              type="email"
-              class="input-field"
-              placeholder="votre@email.com"
-              autocomplete="email"
-              :disabled="loading"
-            />
+            <input v-model="form.email" type="email" class="input-field" placeholder="votre@email.com" autocomplete="email" :disabled="loading" />
           </div>
 
           <div class="flex flex-col gap-2">
-            <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Mot de passe</label>
-            <input
-              v-model="form.password"
-              type="password"
-              class="input-field"
-              placeholder="••••••••"
-              autocomplete="current-password"
-              :disabled="loading"
-            />
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Mot de passe</label>
+              <button
+                type="button"
+                class="text-xs text-[var(--primary)] hover:text-[var(--primary-light)] transition-colors cursor-pointer bg-transparent border-none p-0"
+                @click="panel = 'forgot'"
+              >
+                Mot de passe oublié ?
+              </button>
+            </div>
+            <input v-model="form.password" type="password" class="input-field" placeholder="••••••••" autocomplete="current-password" :disabled="loading" />
           </div>
 
           <Transition name="fade">
@@ -129,7 +154,6 @@ async function handleRegister() {
           </button>
         </form>
 
-        <!-- Divider -->
         <div class="flex items-center gap-3 text-app-muted text-xs">
           <span class="flex-1 h-px bg-[var(--glass-border)]" />
           <span>ou</span>
@@ -137,19 +161,16 @@ async function handleRegister() {
         </div>
 
         <button
-          class="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full text-[15px] font-semibold text-[#A813B7] border-[1.5px] border-[#A813B7] bg-transparent transition-colors hover:bg-[rgba(168,19,183,0.1)] cursor-pointer"
-          @click="showRegister = true"
+          class="w-full inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-full text-[15px] font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer"
+          @click="panel = 'register'"
         >
           Créer un compte
         </button>
       </div>
 
-      <!-- Register Card -->
-      <div v-else class="glass w-full rounded-[24px] p-6 sm:p-8 flex flex-col gap-5">
-        <button
-          class="flex items-center gap-1.5 text-sm text-app-muted cursor-pointer bg-transparent border-none p-0 transition-colors hover:text-app-primary"
-          @click="showRegister = false"
-        >
+      <!-- ── Register Card ── -->
+      <div v-else-if="panel === 'register'" class="glass w-full rounded-[24px] p-6 sm:p-8 flex flex-col gap-5">
+        <button class="back-btn" @click="panel = 'login'">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
@@ -196,12 +217,95 @@ async function handleRegister() {
         </form>
       </div>
 
+      <!-- ── Forgot Password Card ── -->
+      <div v-else class="glass w-full rounded-[24px] p-6 sm:p-8 flex flex-col gap-5">
+        <button class="back-btn" @click="goToLogin">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+          Retour
+        </button>
+
+        <!-- Success state -->
+        <template v-if="forgotSent">
+          <div class="flex flex-col items-center gap-4 py-4 text-center">
+            <div class="w-16 h-16 rounded-full bg-[rgba(34,197,94,0.12)] border border-[rgba(34,197,94,0.3)] flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+              </svg>
+            </div>
+            <div>
+              <p class="text-base font-bold text-app-primary">Email envoyé !</p>
+              <p class="text-sm text-app-muted mt-1.5">
+                Si un compte correspond à <strong class="text-app-primary">{{ forgotEmail }}</strong>,
+                vous recevrez un lien de réinitialisation sous peu.
+              </p>
+            </div>
+            <p class="text-xs text-app-faint">Vérifiez aussi vos spams.</p>
+          </div>
+          <button class="btn-primary w-full" @click="goToLogin">Retour à la connexion</button>
+        </template>
+
+        <!-- Form state -->
+        <template v-else>
+          <div>
+            <h2 class="text-xl font-bold text-app-primary">Mot de passe oublié</h2>
+            <p class="text-sm text-app-muted mt-1.5">
+              Entrez votre adresse email pour recevoir un lien de réinitialisation.
+            </p>
+          </div>
+
+          <form @submit.prevent="handleForgot" class="flex flex-col gap-4">
+            <div class="flex flex-col gap-2">
+              <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Adresse email</label>
+              <input
+                v-model="forgotEmail"
+                type="email"
+                class="input-field"
+                placeholder="votre@email.com"
+                autocomplete="email"
+                :disabled="forgotLoading"
+              />
+            </div>
+
+            <Transition name="fade">
+              <div v-if="forgotError" class="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                {{ forgotError }}
+              </div>
+            </Transition>
+
+            <button type="submit" class="btn-primary w-full" :disabled="forgotLoading">
+              <span v-if="forgotLoading" class="btn-spinner" />
+              <span v-else>Envoyer le lien</span>
+            </button>
+          </form>
+        </template>
+      </div>
+
       <p class="text-[12px] text-app-faint">KDCL Groupage &copy; 2024</p>
     </div>
   </div>
 </template>
 
 <style scoped>
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  padding: 0;
+  transition: color 0.15s;
+}
+.back-btn:hover { color: var(--text-primary); }
+
 .btn-spinner {
   width: 18px;
   height: 18px;

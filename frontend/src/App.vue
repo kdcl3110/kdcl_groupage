@@ -29,7 +29,7 @@ import { isLoading } from '@/stores/loading'
 .loading-bar {
   height: 100%;
   width: 45%;
-  background: linear-gradient(90deg, #A813B7, #d946ef, #A813B7);
+  background: linear-gradient(90deg, var(--primary), var(--primary-light), var(--primary));
   background-size: 200% 100%;
   border-radius: 0 3px 3px 0;
   animation: loading-slide 1.2s ease-in-out infinite;

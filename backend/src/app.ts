@@ -3,6 +3,7 @@ import helmet from 'helmet';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
 import morgan from 'morgan';
+import path from 'path';
 
 import { env } from './configs/env.config';
 import { errorHandler, notFound } from './middlewares/errorHandler';
@@ -49,6 +50,9 @@ function createApp(): Application {
   // Body parsing
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // Static uploads
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   // Health check
   app.get('/health', (_req, res) => {

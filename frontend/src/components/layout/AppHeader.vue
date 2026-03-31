@@ -19,13 +19,13 @@ defineEmits<{
           <text x="14" y="19" text-anchor="middle" font-family="Inter,sans-serif" font-weight="800" font-size="11" fill="white">KG</text>
           <defs>
             <linearGradient id="header-logo-grad" x1="0" y1="0" x2="28" y2="28">
-              <stop offset="0%" stop-color="#c91fd6"/>
-              <stop offset="100%" stop-color="#8a0f97"/>
+              <stop offset="0%" style="stop-color: var(--primary-light)"/>
+              <stop offset="100%" style="stop-color: var(--primary-dark)"/>
             </linearGradient>
           </defs>
         </svg>
       </div>
-      <span class="text-base font-extrabold bg-gradient-to-br from-[#c91fd6] to-[#8a0f97] bg-clip-text text-transparent tracking-tight">KDCL</span>
+      <span class="text-base font-extrabold bg-gradient-to-br from-[var(--primary-light)] to-[var(--primary-dark)] bg-clip-text text-transparent tracking-tight">KDCL</span>
     </div>
 
     <!-- Username centered -->
@@ -43,7 +43,7 @@ defineEmits<{
       </svg>
       <span
         v-if="notificationCount && notificationCount > 0"
-        class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[#A813B7] rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 shadow-[0_0_8px_rgba(168,19,183,0.6)]"
+        class="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-[var(--primary)] rounded-full text-[10px] font-bold text-white flex items-center justify-center px-1 shadow-[0_0_8px_var(--primary-55)]"
       >
         {{ notificationCount > 9 ? '9+' : notificationCount }}
       </span>

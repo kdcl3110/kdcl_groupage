@@ -170,7 +170,7 @@ onMounted(async () => {
         <!-- Messages area -->
         <div ref="messagesContainer" class="flex-1 flex flex-col gap-1 min-h-0 overflow-y-auto scrollbar-hide py-1">
           <div v-if="loading" class="flex-1 flex items-center justify-center">
-            <div class="w-10 h-10 rounded-full border-[3px] border-[rgba(168,19,183,0.18)] border-t-[#A813B7] animate-spin" />
+            <div class="w-10 h-10 rounded-full border-[3px] border-[var(--primary-20)] border-t-[var(--primary)] animate-spin" />
           </div>
 
           <div v-else-if="messages.length === 0" class="flex flex-col items-center gap-3 py-8 text-center text-app-muted">
@@ -207,10 +207,10 @@ onMounted(async () => {
                 <div
                   class="max-w-[78%] px-3.5 py-2.5"
                   :class="isOwnMessage(msg)
-                    ? 'bg-[rgba(168,19,183,0.22)] border border-[rgba(168,19,183,0.3)] rounded-[18px_18px_4px_18px]'
+                    ? 'bg-[var(--primary-25)] border border-[var(--primary-30)] rounded-[18px_18px_4px_18px]'
                     : 'bg-white/[0.07] border border-[var(--glass-border)] rounded-[18px_18px_18px_4px]'"
                 >
-                  <p v-if="!isOwnMessage(msg)" class="text-[11px] font-semibold text-[#A813B7] mb-1">{{ getAuthorName(msg) }}</p>
+                  <p v-if="!isOwnMessage(msg)" class="text-[11px] font-semibold text-[var(--primary)] mb-1">{{ getAuthorName(msg) }}</p>
                   <p class="text-sm leading-snug break-words text-app-primary">{{ msg.content }}</p>
                   <p class="text-[10px] text-app-faint mt-1 text-right">{{ formatTime(msg.creation_date) }}</p>
                 </div>
@@ -230,7 +230,7 @@ onMounted(async () => {
             :disabled="sending"
           />
           <button
-            class="w-9 h-9 rounded-full bg-gradient-to-br from-[#A813B7] to-[#8a0f97] border-none text-white flex items-center justify-center cursor-pointer transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+            class="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] border-none text-white flex items-center justify-center cursor-pointer transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
             @click="sendMessage"
             :disabled="!messageText.trim() || sending"
             aria-label="Envoyer"

@@ -60,8 +60,13 @@ export class PackageService {
       description: data.description,
       weight: data.weight,
       volume: data.volume,
+      tracking_number: `PKG-${clientId}-${Date.now()}`,
       declared_value: data.declared_value,
       special_instructions: data.special_instructions ?? null,
+      image1: data.image1,
+      image2: data.image2 ?? null,
+      image3: data.image3 ?? null,
+      image4: data.image4 ?? null,
     });
 
     await pkg.reload({
@@ -314,6 +319,7 @@ export class PackageService {
     if (data.declared_value == null || data.declared_value < 0) {
       throw new AppError(400, 'Declared value must be a non-negative number');
     }
+    if (!data.image1)                                   throw new AppError(400, 'At least one image (image1) is required');
   }
 }
 

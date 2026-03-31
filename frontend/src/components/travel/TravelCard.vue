@@ -55,7 +55,7 @@ function goToForum(e: Event) {
     <!-- Top row: transport + route + status -->
     <div class="flex items-center gap-2.5">
       <!-- Transport icon -->
-      <div class="w-9 h-9 rounded-[10px] bg-[rgba(168,19,183,0.15)] border border-[rgba(168,19,183,0.25)] flex items-center justify-center text-[#A813B7] shrink-0" v-html="transportIcon" />
+      <div class="w-9 h-9 rounded-[10px] bg-[var(--primary-15)] border border-[var(--primary-25)] flex items-center justify-center text-[var(--primary)] shrink-0" v-html="transportIcon" />
       <!-- Route -->
       <div class="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
         <span class="text-[15px] font-bold text-app-primary truncate">{{ travel.origin_country }}</span>
@@ -113,7 +113,7 @@ function goToForum(e: Event) {
       <span v-if="travel.container" class="text-xs text-app-muted">🏷 {{ travel.container }}</span>
       <span class="flex-1" />
       <button
-        class="flex items-center gap-1 text-xs font-medium text-[#A813B7] px-2.5 py-1 rounded-full bg-[rgba(168,19,183,0.12)] border border-[rgba(168,19,183,0.2)] transition-colors active:bg-[rgba(168,19,183,0.22)]"
+        class="flex items-center gap-1 text-xs font-medium text-[var(--primary)] px-2.5 py-1 rounded-full bg-[var(--primary-15)] border border-[var(--primary-20)] transition-colors active:bg-[var(--primary-25)]"
         @click="goToForum"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

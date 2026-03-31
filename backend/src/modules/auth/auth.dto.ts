@@ -8,6 +8,7 @@ export interface RegisterDto {
   city: string;
   country: string;
   postal_code?: string;
+  role?: 'client' | 'admin' | 'freight_forwarder';
 }
 
 export interface LoginDto {

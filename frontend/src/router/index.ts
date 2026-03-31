@@ -9,6 +9,11 @@ const router = createRouter({
       component: () => import('@/views/LoginView.vue'),
       meta: { public: true },
     },
+    {
+      path: '/reset-password',
+      component: () => import('@/views/ResetPasswordView.vue'),
+      meta: { public: true },
+    },
     { path: '/', redirect: '/voyages' },
     { path: '/voyages', component: () => import('@/views/VoyagesView.vue') },
     { path: '/voyages/:id', component: () => import('@/views/VoyageDetailView.vue') },

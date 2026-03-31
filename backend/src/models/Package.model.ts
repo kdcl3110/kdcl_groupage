@@ -21,6 +21,10 @@ export interface PackageAttributes {
   declared_value: number;
   status: PackageStatus;
   special_instructions: string | null;
+  image1: string;
+  image2: string | null;
+  image3: string | null;
+  image4: string | null;
   creation_date: Date;
   estimated_delivery_date: Date | null;
   delivery_date: Date | null;
@@ -34,6 +38,9 @@ export interface PackageCreationAttributes
     | 'tracking_number'
     | 'creation_date'
     | 'special_instructions'
+    | 'image2'
+    | 'image3'
+    | 'image4'
     | 'estimated_delivery_date'
     | 'delivery_date'
   > {}
@@ -50,6 +57,10 @@ export class Package extends Model<PackageAttributes, PackageCreationAttributes>
   declare declared_value: number;
   declare status: PackageStatus;
   declare special_instructions: string | null;
+  declare image1: string;
+  declare image2: string | null;
+  declare image3: string | null;
+  declare image4: string | null;
   declare creation_date: Date;
   declare estimated_delivery_date: Date | null;
   declare delivery_date: Date | null;
@@ -110,6 +121,22 @@ export class Package extends Model<PackageAttributes, PackageCreationAttributes>
         },
         special_instructions: {
           type: DataTypes.TEXT,
+          allowNull: true,
+        },
+        image1: {
+          type: DataTypes.STRING(512),
+          allowNull: false,
+        },
+        image2: {
+          type: DataTypes.STRING(512),
+          allowNull: true,
+        },
+        image3: {
+          type: DataTypes.STRING(512),
+          allowNull: true,
+        },
+        image4: {
+          type: DataTypes.STRING(512),
           allowNull: true,
         },
         creation_date: {

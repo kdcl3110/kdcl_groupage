@@ -6,6 +6,12 @@ export interface CreatePackageDto {
   volume: number;
   declared_value: number;
   special_instructions?: string;
+  tracking_number?: string;
+
+  image1: string;
+  image2?: string;
+  image3?: string;
+  image4?: string;
 
   // Optionnel : soumettre directement à un voyage à la création
   travel_id?: number;

@@ -92,7 +92,7 @@ onMounted(fetchTravels)
         <p class="font-semibold text-app-primary">Erreur de chargement</p>
         <p class="text-sm">{{ error }}</p>
         <button
-          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[#A813B7] border-[1.5px] border-[#A813B7] bg-transparent transition-colors hover:bg-[rgba(168,19,183,0.1)] cursor-pointer"
+          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer"
           @click="fetchTravels"
         >
           Réessayer

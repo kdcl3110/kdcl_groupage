@@ -81,7 +81,7 @@ onMounted(fetchData)
         <p class="font-semibold text-app-primary">Erreur</p>
         <p class="text-sm">{{ error }}</p>
         <button
-          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[#A813B7] border-[1.5px] border-[#A813B7] bg-transparent transition-colors hover:bg-[rgba(168,19,183,0.1)] cursor-pointer"
+          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer"
           @click="fetchData"
         >
           Réessayer
@@ -184,7 +184,7 @@ onMounted(fetchData)
               class="glass-subtle rounded-[14px] p-3.5 flex flex-col gap-1.5"
             >
               <div class="flex items-center justify-between">
-                <span class="text-[13px] font-bold text-[#A813B7] font-mono tracking-[0.05em]">{{ pkg.tracking_number }}</span>
+                <span class="text-[13px] font-bold text-[var(--primary)] font-mono tracking-[0.05em]">{{ pkg.tracking_number }}</span>
                 <StatusBadge :status="pkg.status" />
               </div>
               <p class="text-[13px] text-app-muted">{{ pkg.description }}</p>

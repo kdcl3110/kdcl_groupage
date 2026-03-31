@@ -89,18 +89,18 @@ defineEmits<{ 'notification-click': [] }>()
           <text x="16" y="21" text-anchor="middle" font-family="Inter,sans-serif" font-weight="800" font-size="12" fill="white">KG</text>
           <defs>
             <linearGradient id="sn-logo-grad" x1="0" y1="0" x2="32" y2="32">
-              <stop offset="0%" stop-color="#c91fd6"/>
-              <stop offset="100%" stop-color="#8a0f97"/>
+              <stop offset="0%" style="stop-color: var(--primary-light)"/>
+              <stop offset="100%" style="stop-color: var(--primary-dark)"/>
             </linearGradient>
           </defs>
         </svg>
       </div>
-      <span class="text-[15px] font-extrabold bg-gradient-to-br from-[#c91fd6] to-[#8a0f97] bg-clip-text text-transparent tracking-tight">KDCL Groupage</span>
+      <span class="text-[15px] font-extrabold bg-gradient-to-br from-[var(--primary-light)] to-[var(--primary-dark)] bg-clip-text text-transparent tracking-tight">KDCL Groupage</span>
     </div>
 
     <!-- User card -->
     <div class="glass-subtle flex items-center gap-2.5 p-3 rounded-[14px] mb-2">
-      <div class="w-[38px] h-[38px] rounded-full bg-gradient-to-br from-[#A813B7] to-[#8a0f97] glow-primary flex items-center justify-center text-sm font-extrabold text-white shrink-0">
+      <div class="w-[38px] h-[38px] rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] glow-primary flex items-center justify-center text-sm font-extrabold text-white shrink-0">
         {{ initials }}
       </div>
       <div class="flex flex-col gap-0.5 overflow-hidden">
@@ -116,11 +116,11 @@ defineEmits<{ 'notification-click': [] }>()
         :key="item.name"
         :to="item.path"
         class="flex items-center gap-3 px-3 py-[11px] rounded-[14px] text-sm font-medium text-app-muted no-underline transition-all duration-150 hover:bg-[var(--glass-bg)] hover:text-app-primary"
-        :class="isActive(item.path) ? 'bg-[rgba(168,19,183,0.12)] text-[#A813B7] font-bold' : ''"
+        :class="isActive(item.path) ? 'bg-[var(--primary-15)] text-[var(--primary)] font-bold' : ''"
       >
         <span
           class="flex items-center justify-center shrink-0"
-          :class="{ 'drop-shadow-[0_0_6px_rgba(168,19,183,0.6)]': isActive(item.path) }"
+          :class="{ 'drop-shadow-[0_0_6px_var(--primary-55)]': isActive(item.path) }"
           v-html="item.icon"
         />
         <span>{{ item.label }}</span>
@@ -141,7 +141,7 @@ defineEmits<{ 'notification-click': [] }>()
           </svg>
           <span
             v-if="notifStore.unreadCount > 0"
-            class="absolute -top-[5px] -right-[5px] min-w-[16px] h-4 bg-[#A813B7] rounded-full text-[9px] font-bold text-white flex items-center justify-center px-0.5"
+            class="absolute -top-[5px] -right-[5px] min-w-[16px] h-4 bg-[var(--primary)] rounded-full text-[9px] font-bold text-white flex items-center justify-center px-0.5"
           >
             {{ notifStore.unreadCount > 9 ? '9+' : notifStore.unreadCount }}
           </span>

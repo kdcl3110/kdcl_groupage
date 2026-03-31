@@ -31,7 +31,7 @@ const barColor = computed(() => {
     </div>
     <div class="h-2 bg-white/[0.08] rounded-full overflow-hidden">
       <div
-        class="h-full rounded-full shadow-[0_0_8px_rgba(168,19,183,0.5)] transition-[width] duration-400 ease-[cubic-bezier(0.4,0,0.2,1)]"
+        class="h-full rounded-full shadow-[0_0_8px_var(--primary-50)] transition-[width] duration-400 ease-[cubic-bezier(0.4,0,0.2,1)]"
         :style="{ width: clampedPct + '%', background: barColor }"
       />
     </div>

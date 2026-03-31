@@ -155,7 +155,7 @@ onMounted(fetchRecipients)
         <p class="font-semibold text-app-primary">Erreur</p>
         <p class="text-sm">{{ error }}</p>
         <button
-          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[#A813B7] border-[1.5px] border-[#A813B7] bg-transparent transition-colors hover:bg-[rgba(168,19,183,0.1)] cursor-pointer"
+          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer"
           @click="fetchRecipients"
         >
           Réessayer
@@ -177,7 +177,7 @@ onMounted(fetchRecipients)
           class="glass rounded-[20px] px-4 py-3.5 flex items-center gap-3"
         >
           <!-- Avatar -->
-          <div class="w-11 h-11 rounded-full bg-gradient-to-br from-[rgba(168,19,183,0.3)] to-[rgba(168,19,183,0.15)] border border-[rgba(168,19,183,0.3)] flex items-center justify-center text-sm font-bold text-[#A813B7] shrink-0">
+          <div class="w-11 h-11 rounded-full bg-gradient-to-br from-[var(--primary-30)] to-[var(--primary-15)] border border-[var(--primary-30)] flex items-center justify-center text-sm font-bold text-[var(--primary)] shrink-0">
             {{ getInitials(r) }}
           </div>
           <!-- Content -->
@@ -221,7 +221,7 @@ onMounted(fetchRecipients)
 
     <!-- FAB -->
     <button
-      class="fixed bottom-22 sm:bottom-20 right-4 sm:right-6 lg:right-8 w-14 h-14 rounded-full bg-gradient-to-br from-[#A813B7] to-[#8a0f97] glow-primary shadow-[0_4px_16px_rgba(0,0,0,0.3)] flex items-center justify-center cursor-pointer z-50 border-none text-white transition-all active:scale-[0.93]"
+      class="fixed bottom-22 sm:bottom-20 right-4 sm:right-6 lg:right-8 w-14 h-14 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] glow-primary shadow-[0_4px_16px_rgba(0,0,0,0.3)] flex items-center justify-center cursor-pointer z-50 border-none text-white transition-all active:scale-[0.93]"
       @click="openCreate"
       aria-label="Ajouter un destinataire"
     >
@@ -238,7 +238,7 @@ onMounted(fetchRecipients)
           <Transition name="slide-up">
             <div v-if="showSheet" class="sheet w-full max-w-[430px] md:max-w-[520px] md:rounded-3xl rounded-t-3xl px-5 pt-6 pb-[calc(24px+env(safe-area-inset-bottom,0px))]">
               <!-- Handle -->
-              <div class="w-9 h-1 bg-[rgba(168,19,183,0.3)] rounded-full mx-auto mb-5" />
+              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mb-5" />
 
               <!-- Header -->
               <div class="flex items-center justify-between mb-5">
