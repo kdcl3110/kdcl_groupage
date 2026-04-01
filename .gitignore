@@ -8,8 +8,7 @@ yarn-error.log*
 pnpm-debug.log*
 .pnpm-store/
 package-lock.json.swp
-backend/uploads/*.*
-!backend/uploads/
+backend/uploads/*
 
 
 # ============================================================
