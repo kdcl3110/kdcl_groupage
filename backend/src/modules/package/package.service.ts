@@ -42,14 +42,17 @@ export class PackageService {
 
     let travelId: number | null = null;
     let status = PackageStatus.PENDING;
-    let travel_load: TravelLoad | null = null;
+    let groupeurToNotify: { userId: number; travelId: number } | null = null;
 
     if (data.travel_id) {
-      const { travel, load } = await this.checkCapacity(data.travel_id, data.weight, data.volume);
+      const travel = await Travel.findByPk(data.travel_id);
+      if (!travel) throw new AppError(404, `Travel #${data.travel_id} not found`);
+      if (travel.status !== TravelStatus.OPEN && travel.status !== TravelStatus.FULL) {
+        throw new AppError(400, `Travel #${data.travel_id} is not accepting submissions (status: "${travel.status}")`);
+      }
       travelId = data.travel_id;
-      status = PackageStatus.IN_TRAVEL;
-      travel_load = load;
-      await this.updateTravelStatusAfterAdd(travel, load, data.weight, data.volume);
+      status = PackageStatus.SUBMITTED;
+      groupeurToNotify = { userId: travel.created_by, travelId: data.travel_id };
     }
 
     const pkg = await Package.create({
@@ -69,6 +72,14 @@ export class PackageService {
       image4: data.image4 ?? null,
     });
 
+    if (groupeurToNotify) {
+      await this.notify(
+        groupeurToNotify.userId,
+        'Nouveau colis en attente',
+        `Un client a soumis le colis ${pkg.tracking_number} au voyage #${groupeurToNotify.travelId}. Validez-le pour l'intégrer.`,
+      );
+    }
+
     await pkg.reload({
       include: [
         { association: 'recipient', attributes: RECIPIENT_ATTRS },
@@ -76,24 +87,63 @@ export class PackageService {
       ],
     });
 
-    return { package: pkg, travel_load };
+    return { package: pkg, travel_load: null };
   }
 
   async submitToTravel(
     packageId: number,
     clientId: number,
     dto: SubmitToTravelDto,
-  ): Promise<{ package: Package; travel_load: TravelLoad }> {
+  ): Promise<Package> {
     const pkg = await this.findOwnedPackage(packageId, clientId);
 
     if (pkg.status !== PackageStatus.PENDING) {
       throw new AppError(400, `Only pending packages can be submitted (current status: "${pkg.status}")`);
     }
 
-    const { travel, load } = await this.checkCapacity(dto.travel_id, Number(pkg.weight), Number(pkg.volume));
+    const travel = await Travel.findByPk(dto.travel_id);
+    if (!travel) throw new AppError(404, `Travel #${dto.travel_id} not found`);
+    if (travel.status !== TravelStatus.OPEN && travel.status !== TravelStatus.FULL) {
+      throw new AppError(400, `Travel #${dto.travel_id} is not accepting submissions (status: "${travel.status}")`);
+    }
 
-    await pkg.update({ travel_id: dto.travel_id, status: PackageStatus.IN_TRAVEL });
+    await pkg.update({ travel_id: dto.travel_id, status: PackageStatus.SUBMITTED });
+
+    // Notify the freight forwarder
+    await this.notify(
+      travel.created_by,
+      'Nouveau colis en attente',
+      `Un client a soumis le colis ${pkg.tracking_number} au voyage #${dto.travel_id}. Validez-le pour l'intégrer.`,
+    );
+
+    await pkg.reload({
+      include: [
+        { association: 'recipient', attributes: RECIPIENT_ATTRS },
+        { association: 'travel', attributes: TRAVEL_ATTRS },
+      ],
+    });
+
+    return pkg;
+  }
+
+  async validatePackage(packageId: number): Promise<{ package: Package; travel_load: TravelLoad }> {
+    const pkg = await Package.findByPk(packageId);
+    if (!pkg) throw new AppError(404, 'Package not found');
+
+    if (pkg.status !== PackageStatus.SUBMITTED) {
+      throw new AppError(400, `Only submitted packages can be validated (current status: "${pkg.status}")`);
+    }
+
+    const { travel, load } = await this.checkCapacity(pkg.travel_id!, Number(pkg.weight), Number(pkg.volume));
+
+    await pkg.update({ status: PackageStatus.IN_TRAVEL });
     await this.updateTravelStatusAfterAdd(travel, load, Number(pkg.weight), Number(pkg.volume));
+
+    await this.notify(
+      pkg.client_id,
+      'Colis validé',
+      `Votre colis ${pkg.tracking_number} a été validé et intégré au voyage #${pkg.travel_id}.`,
+    );
 
     await pkg.reload({
       include: [
@@ -143,8 +193,8 @@ export class PackageService {
 
   async cancel(packageId: number, clientId: number): Promise<{ message: string }> {
     const pkg = await this.findOwnedPackage(packageId, clientId);
-    if (pkg.status !== PackageStatus.PENDING) {
-      throw new AppError(400, `Only pending packages can be cancelled (current status: "${pkg.status}")`);
+    if (pkg.status !== PackageStatus.PENDING && pkg.status !== PackageStatus.SUBMITTED) {
+      throw new AppError(400, `Only pending or submitted packages can be cancelled (current status: "${pkg.status}")`);
     }
     await pkg.update({ status: PackageStatus.CANCELLED });
     return { message: 'Package cancelled successfully' };
@@ -188,12 +238,13 @@ export class PackageService {
     if (!pkg) throw new AppError(404, 'Package not found');
 
     if (dto.travel_id === null) {
-      if (pkg.status !== PackageStatus.IN_TRAVEL) {
+      if (pkg.status !== PackageStatus.IN_TRAVEL && pkg.status !== PackageStatus.SUBMITTED) {
         throw new AppError(400, 'Package is not currently assigned to a travel');
       }
+      const wasInTravel = pkg.status === PackageStatus.IN_TRAVEL;
       const oldTravelId = pkg.travel_id!;
       await pkg.update({ travel_id: null, status: PackageStatus.PENDING });
-      await this.reopenTravelIfNeeded(oldTravelId);
+      if (wasInTravel) await this.reopenTravelIfNeeded(oldTravelId);
       await this.notify(
         pkg.client_id,
         'Colis retiré du voyage',
@@ -264,7 +315,7 @@ export class PackageService {
 
   private async computeLoad(travelId: number, travel: Travel): Promise<TravelLoad> {
     const packages = await Package.findAll({
-      where: { travel_id: travelId, status: { [Op.notIn]: [PackageStatus.CANCELLED] } },
+      where: { travel_id: travelId, status: { [Op.notIn]: [PackageStatus.CANCELLED, PackageStatus.SUBMITTED] } },
       attributes: ['weight', 'volume'],
     });
     const current_weight = packages.reduce((s, p) => s + Number(p.weight), 0);

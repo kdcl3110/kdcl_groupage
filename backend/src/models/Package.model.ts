@@ -1,12 +1,13 @@
 import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 export enum PackageStatus {
-  PENDING = 'pending',
+  PENDING   = 'pending',
+  SUBMITTED = 'submitted',
   IN_TRAVEL = 'in_travel',
   IN_TRANSIT = 'in_transit',
-  DELIVERED = 'delivered',
-  RETURNED = 'returned',
-  CANCELLED = 'cancelled',
+  DELIVERED  = 'delivered',
+  RETURNED   = 'returned',
+  CANCELLED  = 'cancelled',
 }
 
 export interface PackageAttributes {

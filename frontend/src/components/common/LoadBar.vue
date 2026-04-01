@@ -14,7 +14,7 @@ const clampedPct = computed(() => Math.min(100, Math.max(0, props.percentage)))
 const barColor = computed(() => {
   if (clampedPct.value >= 90) return '#f87171'
   if (clampedPct.value >= 70) return '#fb923c'
-  return 'var(--color-primary)'
+  return 'var(--primary)'
 })
 </script>
 
@@ -29,7 +29,7 @@ const barColor = computed(() => {
         <span class="text-app-muted"> · {{ clampedPct.toFixed(0) }}%</span>
       </span>
     </div>
-    <div class="h-2 bg-white/[0.08] rounded-full overflow-hidden">
+    <div class="h-2 rounded-full overflow-hidden" style="background: var(--bar-track);">
       <div
         class="h-full rounded-full shadow-[0_0_8px_var(--primary-50)] transition-[width] duration-400 ease-[cubic-bezier(0.4,0,0.2,1)]"
         :style="{ width: clampedPct + '%', background: barColor }"

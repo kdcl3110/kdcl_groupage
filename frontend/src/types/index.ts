@@ -4,6 +4,11 @@ export interface User {
   last_name: string
   email: string
   role: 'admin' | 'freight_forwarder' | 'client'
+  phone: string
+  street: string
+  city: string
+  country: string
+  postal_code: string | null
 }
 
 export interface Travel {
@@ -41,7 +46,7 @@ export interface Package {
   weight: number
   volume: number
   declared_value: number
-  status: 'pending' | 'in_travel' | 'in_transit' | 'delivered' | 'returned' | 'cancelled'
+  status: 'pending' | 'submitted' | 'in_travel' | 'in_transit' | 'delivered' | 'returned' | 'cancelled'
   special_instructions: string | null
   image1: string
   image2: string | null

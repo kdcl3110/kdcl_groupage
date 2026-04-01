@@ -17,12 +17,8 @@ export async function getForumMessages(req: AuthRequest, res: Response, next: Ne
 export async function postForumMessage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { content, parent_message_id } = req.body as { content: string; parent_message_id?: number };
-    const message = await service.postMessage(
-      Number(req.params.id),
-      req.user!.user_id,
-      content,
-      parent_message_id,
-    );
+    const caller = { userId: req.user!.user_id, role: req.user!.role };
+    const message = await service.postMessage(Number(req.params.id), caller, content, parent_message_id);
     res.status(201).json(message);
   } catch (error) {
     next(error);

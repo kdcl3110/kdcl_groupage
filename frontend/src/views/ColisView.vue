@@ -1,22 +1,46 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import { packagesApi } from '@/api/packages'
 import { recipientsApi } from '@/api/recipients'
 import { travelsApi } from '@/api/travels'
+import { useToastStore, apiError } from '@/stores/toast'
+import { useAuthStore } from '@/stores/auth'
 import type { Package, Recipient, Travel } from '@/types'
+
+const router = useRouter()
+const auth = useAuthStore()
+const isClient = computed(() => auth.user?.role === 'client')
 
 // ─── List state ────────────────────────────────────────────────────────────
 const packages = ref<Package[]>([])
 const loading = ref(true)
 const error = ref('')
 
+// ─── Status filters (client only) ───────────────────────────────────────────
+const activeFilter = ref('all')
+const colisFilters = [
+  { key: 'all',        label: 'Tous' },
+  { key: 'pending',    label: 'En attente' },
+  { key: 'submitted',  label: 'Soumis' },
+  { key: 'in_travel',  label: 'En voyage' },
+  { key: 'in_transit', label: 'En transit' },
+  { key: 'delivered',  label: 'Livré' },
+  { key: 'cancelled',  label: 'Annulé' },
+]
+const filtered = computed(() => {
+  if (!isClient.value || activeFilter.value === 'all') return packages.value
+  return packages.value.filter(p => p.status === activeFilter.value)
+})
+
 // ─── Sheet / wizard state ───────────────────────────────────────────────────
 const showSheet = ref(false)
 const step = ref(1)
 const formLoading = ref(false)
 const formError = ref('')
+const toast = useToastStore()
 
 // Step 1 — basic info
 const form = reactive({
@@ -50,6 +74,10 @@ const step1Valid = computed(
 )
 const step2Valid = computed(() => selectedRecipient.value !== null && images.value[0] !== null)
 const step3Valid = computed(() => selectedTravel.value !== null || noTravel.value)
+
+function pkgDisplayStatus(pkg: Package) {
+  return pkg.status
+}
 
 // ─── Data fetch ─────────────────────────────────────────────────────────────
 async function fetchPackages() {
@@ -170,15 +198,30 @@ async function handleSubmit() {
     showSheet.value = false
     resetForm()
     await fetchPackages()
+    toast.success('Colis créé avec succès.')
   } catch (err: unknown) {
-    const e = err as { response?: { data?: { message?: string } } }
-    formError.value = e.response?.data?.message ?? 'Erreur lors de la création du colis.'
+    const msg = apiError(err, 'Erreur lors de la création du colis.')
+    formError.value = msg
+    toast.error(msg)
   } finally {
     formLoading.value = false
   }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+const STATUS_COLORS: Record<string, string> = {
+  pending:    '#9ca3af',
+  in_travel:  '#81A6C6',
+  in_transit: '#60a5fa',
+  delivered:  '#2dd4bf',
+  returned:   '#fb923c',
+  cancelled:  '#f87171',
+}
+
+function statusColor(status: string) {
+  return STATUS_COLORS[status] ?? '#9ca3af'
+}
+
 function formatDate(date: string) {
   return new Date(date).toLocaleDateString('fr-FR', {
     day: '2-digit',
@@ -217,6 +260,19 @@ onMounted(fetchPackages)
         </button>
       </div>
 
+      <!-- Filter chips (client only) -->
+      <div v-if="isClient" class="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
+        <button
+          v-for="f in colisFilters"
+          :key="f.key"
+          class="chip"
+          :class="{ active: activeFilter === f.key }"
+          @click="activeFilter = f.key"
+        >
+          {{ f.label }}
+        </button>
+      </div>
+
       <!-- Loading -->
       <div v-if="loading" class="flex flex-col gap-2.5">
         <div v-for="i in 4" :key="i" class="glass rounded-[20px] p-4">
@@ -239,46 +295,78 @@ onMounted(fetchPackages)
       </div>
 
       <!-- Empty -->
-      <div v-else-if="packages.length === 0" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
+      <div v-else-if="filtered.length === 0" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
         <span class="text-5xl opacity-40">📦</span>
         <p class="font-semibold text-app-primary">Aucun colis</p>
-        <p class="text-sm">Ajoutez votre premier colis en cliquant sur le bouton +.</p>
+        <p class="text-sm">
+          {{ activeFilter === 'all' ? 'Ajoutez votre premier colis en cliquant sur le bouton +.' : 'Aucun colis avec ce statut.' }}
+        </p>
       </div>
 
       <!-- List -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
         <div
-          v-for="pkg in packages"
+          v-for="pkg in filtered"
           :key="pkg.package_id"
-          class="glass rounded-[20px] p-4 flex flex-col gap-2"
+          class="glass rounded-[20px] overflow-hidden cursor-pointer transition-transform duration-150 active:scale-[0.985] border-t-[3px]"
+          :style="`border-top-color: ${statusColor(pkg.status)};`"
+          @click="router.push('/colis/' + pkg.package_id)"
         >
-          <!-- Image thumbnail -->
-          <div v-if="pkg.image1" class="w-full h-[140px] rounded-[12px] overflow-hidden bg-white/5">
-            <img :src="pkg.image1" class="w-full h-full object-cover" :alt="pkg.description" />
+          <!-- Hero image -->
+          <div class="relative h-[180px]">
+            <img
+              v-if="pkg.image1"
+              :src="pkg.image1"
+              :alt="pkg.description"
+              class="absolute inset-0 w-full h-full object-cover"
+            />
+            <!-- No image placeholder -->
+            <div
+              v-else
+              class="h-[180px] flex items-center justify-center"
+              :style="`background-color: color-mix(in srgb, ${statusColor(pkg.status)} 8%, transparent);`"
+            >
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" class="text-white/15">
+                <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+            </div>
+            <!-- Gradient overlay -->
+            <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
+            <!-- Overlay content -->
+            <div class="absolute bottom-0 left-0 right-0 flex items-center justify-between px-3.5 pb-3">
+              <span class="font-mono text-[11px] text-white/60 tracking-[0.08em]">{{ pkg.tracking_number }}</span>
+              
+            </div>
           </div>
 
-          <div class="flex items-center justify-between">
-            <span class="text-[13px] font-bold text-[var(--primary)] font-mono tracking-[0.05em]">{{ pkg.tracking_number }}</span>
-            <StatusBadge :status="pkg.status" />
+          <!-- Card body -->
+          <div class="p-4 flex flex-col gap-2.5 relative">
+            <div class="absolute top-2 right-2">
+
+              <StatusBadge :status="pkgDisplayStatus(pkg)" />
+            </div>
+            <!-- Description -->
+            <p class="text-[15px] font-semibold text-app-primary leading-snug">{{ pkg.description }}</p>
+
+            <!-- Metrics row -->
+            <p class="text-[13px] text-app-muted flex items-center gap-1.5">
+              <span>{{ pkg.weight }} kg</span>
+              <span class="text-app-faint">·</span>
+              <span>{{ pkg.volume }} m³</span>
+              <span class="text-app-faint">·</span>
+              <span>{{ pkg.declared_value }} €</span>
+            </p>
+
+            <!-- Footer row -->
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] text-app-faint">{{ formatDate(pkg.creation_date) }}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </div>
           </div>
-
-          <p class="text-sm font-medium text-app-primary">{{ pkg.description }}</p>
-
-          <div class="flex items-center gap-2 flex-wrap">
-            <div class="flex items-center gap-1 text-xs text-app-muted bg-white/5 border border-[var(--glass-border)] rounded-md px-2 py-0.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8V4m4 4V2m4 6V4m-10 4h12l1 9H5L6 8z"/></svg>
-              {{ pkg.weight }} kg
-            </div>
-            <div class="flex items-center gap-1 text-xs text-app-muted bg-white/5 border border-[var(--glass-border)] rounded-md px-2 py-0.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-              {{ pkg.volume }} m³
-            </div>
-            <div class="text-xs text-app-muted bg-white/5 border border-[var(--glass-border)] rounded-md px-2 py-0.5">
-              {{ pkg.declared_value }} €
-            </div>
-          </div>
-
-          <p class="text-[11px] text-app-faint">Créé le {{ formatDate(pkg.creation_date) }}</p>
         </div>
       </div>
     </div>

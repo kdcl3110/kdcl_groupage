@@ -18,8 +18,10 @@ const router = createRouter({
     { path: '/voyages', component: () => import('@/views/VoyagesView.vue') },
     { path: '/voyages/:id', component: () => import('@/views/VoyageDetailView.vue') },
     { path: '/colis', component: () => import('@/views/ColisView.vue') },
+    { path: '/colis/:id', component: () => import('@/views/ColisDetailView.vue') },
     { path: '/destinataires', component: () => import('@/views/DestinatairesView.vue') },
     { path: '/forum', component: () => import('@/views/ForumView.vue') },
+    { path: '/forum/:id', component: () => import('@/views/ForumChatView.vue') },
     { path: '/profil', component: () => import('@/views/ProfilView.vue') },
   ],
 })

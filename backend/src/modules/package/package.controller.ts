@@ -86,6 +86,15 @@ export async function getPackageById(req: AuthRequest, res: Response, next: Next
   }
 }
 
+export async function validatePackage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await service.validatePackage(Number(req.params.id));
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function adminReassign(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const pkg = await service.adminReassign(Number(req.params.id), req.body);

@@ -1,20 +1,26 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
+import { useRoute } from 'vue-router'
 import AppHeader from './AppHeader.vue'
 import TabBar from './TabBar.vue'
 import SideNav from './SideNav.vue'
 import NotificationDrawer from './NotificationDrawer.vue'
+import ToastNotification from '@/components/common/ToastNotification.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notifications'
 
 const authStore = useAuthStore()
 const notifStore = useNotificationStore()
+const route = useRoute()
 
 const showNotifications = ref(false)
 
 const userName = authStore.user
   ? `${authStore.user.first_name} ${authStore.user.last_name}`
   : 'Utilisateur'
+
+const mainPaths = ['/voyages', '/colis', '/destinataires', '/forum', '/profil']
+const isMainPage = computed(() => mainPaths.includes(route.path))
 </script>
 
 <template>
@@ -27,7 +33,10 @@ const userName = authStore.user
       @notification-click="showNotifications = true"
     />
 
-    <main class="flex-1 pt-16 pb-28 sm:pb-16 lg:pt-0 lg:pb-10 overflow-y-auto scrollbar-hide">
+    <main
+      class="flex-1 pt-16 lg:pt-0 lg:pb-10 overflow-y-auto scrollbar-hide"
+      :class="isMainPage ? 'pb-28 sm:pb-16' : 'pb-6'"
+    >
       <slot />
     </main>
 
@@ -38,4 +47,6 @@ const userName = authStore.user
     :show="showNotifications"
     @close="showNotifications = false"
   />
+
+  <ToastNotification />
 </template>

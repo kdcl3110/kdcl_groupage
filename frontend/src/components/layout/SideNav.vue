@@ -26,7 +26,7 @@ const roleLabel = computed(() => {
   return map[auth.user?.role ?? ''] ?? ''
 })
 
-const navItems = [
+const allNavItems = [
   {
     name: 'voyages',
     path: '/voyages',
@@ -49,6 +49,7 @@ const navItems = [
     name: 'destinataires',
     path: '/destinataires',
     label: 'Destinataires',
+    roles: ['client'],
     icon: `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
       <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
@@ -71,6 +72,14 @@ const navItems = [
     </svg>`,
   },
 ]
+
+const navItems = computed(() => {
+  const role = auth.user?.role
+  return allNavItems.filter((item) => {
+    if (!item.roles) return true
+    return role ? item.roles.includes(role) : true
+  })
+})
 
 function isActive(path: string) {
   return route.path === path || route.path.startsWith(path + '/')

@@ -12,5 +12,7 @@ export const packagesApi = {
   remove: (id: number) => api.delete(`/packages/${id}`),
   cancel: (id: number) => api.patch(`/packages/${id}/cancel`),
   submit: (id: number, travel_id: number) =>
-    api.patch(`/packages/${id}/submit`, { travel_id }),
+    api.patch<Package>(`/packages/${id}/submit`, { travel_id }),
+  validate: (id: number) =>
+    api.patch<{ package: Package; travel_load: object }>(`/packages/${id}/validate`),
 }

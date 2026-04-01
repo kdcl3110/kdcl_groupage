@@ -116,7 +116,7 @@ onMounted(fetchRecipients)
 
 <template>
   <AppLayout>
-    <div class="p-4 sm:p-6 lg:p-8 flex flex-col gap-4">
+    <div class="p-2 sm:p-4 lg:p-6 flex flex-col gap-4">
       <!-- Header -->
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-extrabold text-app-primary tracking-tight">Destinataires</h1>

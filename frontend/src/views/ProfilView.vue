@@ -5,12 +5,66 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { authApi } from '@/api/auth'
+import { useToastStore, apiError } from '@/stores/toast'
 
 const router = useRouter()
 const auth = useAuthStore()
 const themeStore = useThemeStore()
 
+const toast = useToastStore()
 const showLogoutDialog = ref(false)
+
+// ── Edit profile sheet ───────────────────────────────────────────────────
+const showProfileSheet = ref(false)
+const profileForm = reactive({
+  first_name: '',
+  last_name: '',
+  phone: '',
+  street: '',
+  city: '',
+  country: '',
+  postal_code: '',
+})
+const profileLoading = ref(false)
+
+function openProfileSheet() {
+  const u = auth.user
+  if (!u) return
+  profileForm.first_name  = u.first_name  ?? ''
+  profileForm.last_name   = u.last_name   ?? ''
+  profileForm.phone       = u.phone       ?? ''
+  profileForm.street      = u.street      ?? ''
+  profileForm.city        = u.city        ?? ''
+  profileForm.country     = u.country     ?? ''
+  profileForm.postal_code = u.postal_code ?? ''
+  showProfileSheet.value  = true
+}
+
+async function handleUpdateProfile() {
+  if (!profileForm.first_name.trim() || !profileForm.last_name.trim()) {
+    toast.error('Le prénom et le nom sont obligatoires.')
+    return
+  }
+  profileLoading.value = true
+  try {
+    const { data } = await authApi.updateProfile({
+      first_name:  profileForm.first_name.trim(),
+      last_name:   profileForm.last_name.trim(),
+      phone:       profileForm.phone.trim()       || undefined,
+      street:      profileForm.street.trim()      || undefined,
+      city:        profileForm.city.trim()        || undefined,
+      country:     profileForm.country.trim()     || undefined,
+      postal_code: profileForm.postal_code.trim() || undefined,
+    })
+    auth.updateUser(data)
+    showProfileSheet.value = false
+    toast.success('Profil mis à jour.')
+  } catch (err) {
+    toast.error(apiError(err, 'Erreur lors de la mise à jour du profil.'))
+  } finally {
+    profileLoading.value = false
+  }
+}
 
 // ── Change password sheet ─────────────────────────────────────────────────
 const showPasswordSheet = ref(false)
@@ -66,9 +120,11 @@ async function handleChangePassword() {
   try {
     await authApi.changePassword(pwForm.current, pwForm.next)
     pwSuccess.value = true
+    toast.success('Mot de passe modifié avec succès.')
   } catch (err: unknown) {
-    const e = err as { response?: { data?: { message?: string } } }
-    pwError.value = e.response?.data?.message ?? 'Erreur lors du changement de mot de passe.'
+    const msg = apiError(err, 'Erreur lors du changement de mot de passe.')
+    pwError.value = msg
+    toast.error(msg)
   } finally {
     pwLoading.value = false
   }
@@ -114,7 +170,7 @@ function confirmLogout() {
 
 <template>
   <AppLayout>
-    <div class="p-4 sm:p-6 lg:p-8 flex flex-col gap-5 max-w-2xl lg:mx-auto">
+    <div class="p-2 sm:p-6 lg:p-8 flex flex-col gap-5 max-w-2xl lg:mx-auto">
       <!-- Avatar / Hero -->
       <div class="glass rounded-[20px] relative overflow-hidden flex flex-col items-center gap-3 px-5 py-7 text-center">
         <!-- Glow -->
@@ -131,6 +187,18 @@ function confirmLogout() {
             :class="roleBadgeClass"
           >{{ roleLabel }}</div>
           <p class="text-[13px] text-app-muted">{{ user?.email }}</p>
+          <div v-if="user?.phone" class="flex items-center gap-1.5 text-[12px] text-app-faint mt-0.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.55a16 16 0 0 0 8 8l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+            <span>{{ user.phone }}</span>
+          </div>
+          <div v-if="user?.city" class="flex items-center gap-1.5 text-[12px] text-app-faint">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>
+            </svg>
+            <span>{{ user.city }}{{ user.country ? ', ' + user.country : '' }}</span>
+          </div>
         </div>
       </div>
 
@@ -138,7 +206,7 @@ function confirmLogout() {
       <div class="flex flex-col gap-2">
         <h2 class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Compte</h2>
         <div class="glass rounded-[20px] overflow-hidden">
-          <div class="flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors active:bg-white/5">
+          <div class="flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors active:bg-white/5" @click="openProfileSheet">
             <div class="w-9 h-9 rounded-[10px] bg-white/[0.06] border border-[var(--glass-border)] flex items-center justify-center text-app-muted shrink-0">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -440,6 +508,129 @@ function confirmLogout() {
                     <span v-else>Mettre à jour le mot de passe</span>
                   </button>
                 </template>
+
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Edit profile sheet -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showProfileSheet" class="overlay flex items-end md:items-center justify-center" @click.self="showProfileSheet = false">
+          <Transition name="slide-up">
+            <div v-if="showProfileSheet" class="sheet w-full max-w-[480px] md:rounded-3xl rounded-t-3xl flex flex-col" style="max-height: 92dvh;">
+              <!-- Handle -->
+              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
+
+              <!-- Header -->
+              <div class="flex items-center justify-between px-5 pt-4 pb-4 shrink-0">
+                <h2 class="text-[17px] font-bold text-app-primary">Modifier le profil</h2>
+                <button
+                  class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer"
+                  @click="showProfileSheet = false"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Content -->
+              <div class="flex-1 overflow-y-auto px-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4">
+
+                <!-- Name row -->
+                <div class="flex gap-3">
+                  <div class="flex-1 flex flex-col gap-1.5">
+                    <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Prénom</label>
+                    <input
+                      v-model="profileForm.first_name"
+                      type="text"
+                      class="input-field"
+                      placeholder="Jean"
+                      :disabled="profileLoading"
+                    />
+                  </div>
+                  <div class="flex-1 flex flex-col gap-1.5">
+                    <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Nom</label>
+                    <input
+                      v-model="profileForm.last_name"
+                      type="text"
+                      class="input-field"
+                      placeholder="Dupont"
+                      :disabled="profileLoading"
+                    />
+                  </div>
+                </div>
+
+                <!-- Phone -->
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Téléphone</label>
+                  <input
+                    v-model="profileForm.phone"
+                    type="tel"
+                    class="input-field"
+                    placeholder="+33 6 00 00 00 00"
+                    :disabled="profileLoading"
+                  />
+                </div>
+
+                <div class="h-px bg-[var(--glass-border)]" />
+
+                <!-- Street -->
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Adresse</label>
+                  <input
+                    v-model="profileForm.street"
+                    type="text"
+                    class="input-field"
+                    placeholder="12 rue de la Paix"
+                    :disabled="profileLoading"
+                  />
+                </div>
+
+                <!-- City + Postal code -->
+                <div class="flex gap-3">
+                  <div class="flex-1 flex flex-col gap-1.5">
+                    <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Ville</label>
+                    <input
+                      v-model="profileForm.city"
+                      type="text"
+                      class="input-field"
+                      placeholder="Paris"
+                      :disabled="profileLoading"
+                    />
+                  </div>
+                  <div class="w-28 flex flex-col gap-1.5">
+                    <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Code postal</label>
+                    <input
+                      v-model="profileForm.postal_code"
+                      type="text"
+                      class="input-field"
+                      placeholder="75001"
+                      :disabled="profileLoading"
+                    />
+                  </div>
+                </div>
+
+                <!-- Country -->
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Pays</label>
+                  <input
+                    v-model="profileForm.country"
+                    type="text"
+                    class="input-field"
+                    placeholder="France"
+                    :disabled="profileLoading"
+                  />
+                </div>
+
+                <button class="btn-primary w-full" @click="handleUpdateProfile" :disabled="profileLoading">
+                  <span v-if="profileLoading" class="btn-spinner" />
+                  <span v-else>Enregistrer</span>
+                </button>
 
               </div>
             </div>

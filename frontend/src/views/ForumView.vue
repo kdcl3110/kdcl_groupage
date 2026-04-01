@@ -1,247 +1,147 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import StatusBadge from '@/components/common/StatusBadge.vue'
 import { travelsApi } from '@/api/travels'
+import { packagesApi } from '@/api/packages'
 import { useAuthStore } from '@/stores/auth'
-import type { Travel, ForumMessage } from '@/types'
+import type { Travel } from '@/types'
 
-const route = useRoute()
+const router = useRouter()
 const auth = useAuthStore()
 
+const isClient = computed(() => auth.user?.role === 'client')
 const travels = ref<Travel[]>([])
-const messages = ref<ForumMessage[]>([])
-const selectedTravelId = ref<number | null>(null)
-const selectedTravel = computed(() =>
-  travels.value.find((t) => t.travel_id === selectedTravelId.value) ?? null
-)
+const loading = ref(true)
 
-const loading = ref(false)
-const loadingTravels = ref(true)
-const messageText = ref('')
-const sending = ref(false)
-const messagesContainer = ref<HTMLElement | null>(null)
-
-const currentUserId = computed(() => auth.user?.user_id ?? null)
-
-function isOwnMessage(msg: ForumMessage) {
-  return msg.message_type === 'user' && msg.author_id === currentUserId.value
+function transportIcon(type: string) {
+  return type === 'ship' ? 'M' : 'A' // used in avatar
 }
 
-function formatTime(date: string) {
-  return new Date(date).toLocaleTimeString('fr-FR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
-function formatDateGroup(date: string) {
+function formatDate(date: string | null) {
+  if (!date) return ''
   const d = new Date(date)
   const today = new Date()
-  const yesterday = new Date(today)
-  yesterday.setDate(today.getDate() - 1)
-
-  if (d.toDateString() === today.toDateString()) return "Aujourd'hui"
-  if (d.toDateString() === yesterday.toDateString()) return 'Hier'
-  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
-}
-
-function getAuthorName(msg: ForumMessage) {
-  if (msg.author) return `${msg.author.first_name} ${msg.author.last_name}`
-  return 'Utilisateur'
+  if (d.toDateString() === today.toDateString()) return 'Aujourd\'hui'
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
 }
 
 async function fetchTravels() {
-  loadingTravels.value = true
-  try {
-    const { data } = await travelsApi.getAll()
-    travels.value = data
-  } catch {
-    // silent
-  } finally {
-    loadingTravels.value = false
-  }
-}
-
-async function fetchMessages(travelId: number) {
   loading.value = true
-  messages.value = []
   try {
-    const { data } = await travelsApi.getForumMessages(travelId)
-    messages.value = data
-    await nextTick()
-    scrollToBottom()
+    if (isClient.value) {
+      // Clients only see forums of travels they participate in
+      const { data: packages } = await packagesApi.getAll()
+      const travelIds = new Set(
+        packages
+          .filter((p) => ['submitted', 'in_travel', 'in_transit', 'delivered'].includes(p.status) && p.travel_id)
+          .map((p) => p.travel_id!),
+      )
+      if (travelIds.size > 0) {
+        const { data: allTravels } = await travelsApi.getAll()
+        travels.value = allTravels.filter((t) => travelIds.has(t.travel_id))
+      } else {
+        travels.value = []
+      }
+    } else {
+      const { data } = await travelsApi.getAll()
+      travels.value = data
+    }
   } catch {
-    // silent
+    travels.value = []
   } finally {
     loading.value = false
   }
 }
 
-async function sendMessage() {
-  if (!messageText.value.trim() || !selectedTravelId.value || sending.value) return
-  const content = messageText.value.trim()
-  messageText.value = ''
-  sending.value = true
-  try {
-    const { data } = await travelsApi.postForumMessage(selectedTravelId.value, content)
-    messages.value.push(data)
-    await nextTick()
-    scrollToBottom()
-  } catch {
-    messageText.value = content
-  } finally {
-    sending.value = false
-  }
-}
-
-function scrollToBottom() {
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
-  }
-}
-
-function selectTravel(id: number) {
-  selectedTravelId.value = id
-  fetchMessages(id)
-}
-
-watch(selectedTravelId, (id) => {
-  if (id) fetchMessages(id)
-})
-
-onMounted(async () => {
-  await fetchTravels()
-  const qid = route.query.travel_id
-  if (qid) {
-    selectedTravelId.value = Number(qid)
-  } else if (travels.value.length > 0) {
-    selectedTravelId.value = travels.value[0].travel_id
-  }
-})
+onMounted(fetchTravels)
 </script>
 
 <template>
   <AppLayout>
-    <div class="p-4 sm:p-6 lg:p-8 flex flex-col gap-3 h-[calc(100dvh-64px-calc(80px+24px+env(safe-area-inset-bottom,0px)))] lg:h-[calc(100dvh-64px-32px)]">
+    <div class="flex flex-col h-[calc(100dvh-64px-calc(80px+24px+env(safe-area-inset-bottom,0px)))] lg:h-[calc(100dvh-64px-32px)]">
+
       <!-- Header -->
-      <div class="flex items-center shrink-0">
+      <div class="px-4 sm:px-6 pt-5 pb-3 shrink-0">
         <h1 class="text-2xl font-extrabold text-app-primary tracking-tight">Forum</h1>
+        <p class="text-[13px] text-app-muted mt-0.5">Discussions par voyage</p>
       </div>
 
-      <!-- Travel selector -->
-      <div v-if="!loadingTravels && travels.length > 0" class="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5 shrink-0">
-        <button
+      <!-- Loading -->
+      <div v-if="loading" class="flex flex-col px-4 sm:px-6 gap-0">
+        <div v-for="i in 5" :key="i" class="flex items-center gap-3.5 py-4 border-b border-[var(--glass-border)]">
+          <div class="skeleton w-12 h-12 rounded-full shrink-0" />
+          <div class="flex-1 flex flex-col gap-2">
+            <div class="skeleton h-4 w-[55%]" />
+            <div class="skeleton h-3 w-[40%]" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <div v-else-if="travels.length === 0" class="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center text-app-muted">
+        <div class="w-16 h-16 rounded-full bg-[var(--primary-10)] flex items-center justify-center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-[var(--primary)] opacity-60">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+        </div>
+        <p class="font-semibold text-app-primary">Aucun forum disponible</p>
+        <p class="text-sm leading-relaxed">
+          {{ isClient ? "Vous ne faites pas encore partie d'un voyage. Soumettez un colis pour rejoindre un voyage." : "Aucun voyage disponible." }}
+        </p>
+      </div>
+
+      <!-- Chat list -->
+      <div v-else class="flex-1 overflow-y-auto scrollbar-hide">
+        <div
           v-for="t in travels"
           :key="t.travel_id"
-          class="chip shrink-0"
-          :class="{ active: selectedTravelId === t.travel_id }"
-          @click="selectTravel(t.travel_id)"
+          class="flex items-center gap-3.5 px-4 sm:px-6 py-3.5 border-b border-[var(--glass-border)] cursor-pointer transition-colors active:bg-[var(--glass-bg)]"
+          @click="router.push(`/forum/${t.travel_id}`)"
         >
-          {{ t.origin_country }} → {{ t.destination_country }}
-        </button>
-      </div>
-
-      <div v-else-if="loadingTravels" class="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5 shrink-0">
-        <div v-for="i in 3" :key="i" class="skeleton h-[34px] w-[120px] rounded-full shrink-0" />
-      </div>
-
-      <!-- No travels -->
-      <div v-if="!loadingTravels && travels.length === 0" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
-        <span class="text-5xl opacity-40">💬</span>
-        <p class="font-semibold text-app-primary">Aucun voyage</p>
-        <p class="text-sm">Le forum est associé aux voyages. Aucun voyage disponible.</p>
-      </div>
-
-      <template v-else-if="selectedTravelId">
-        <!-- Travel info pill -->
-        <div v-if="selectedTravel" class="glass rounded-full flex items-center justify-between px-3.5 py-2.5 shrink-0">
-          <div class="flex items-center gap-1.5 text-[13px] text-app-muted">
-            <strong class="text-app-primary">{{ selectedTravel.origin_country }}</strong>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="5" y1="12" x2="19" y2="12"/>
-              <polyline points="12 5 19 12 12 19"/>
-            </svg>
-            <strong class="text-app-primary">{{ selectedTravel.destination_country }}</strong>
-          </div>
-          <span class="text-xs text-app-muted">{{ messages.length }} messages</span>
-        </div>
-
-        <!-- Messages area -->
-        <div ref="messagesContainer" class="flex-1 flex flex-col gap-1 min-h-0 overflow-y-auto scrollbar-hide py-1">
-          <div v-if="loading" class="flex-1 flex items-center justify-center">
-            <div class="w-10 h-10 rounded-full border-[3px] border-[var(--primary-20)] border-t-[var(--primary)] animate-spin" />
-          </div>
-
-          <div v-else-if="messages.length === 0" class="flex flex-col items-center gap-3 py-8 text-center text-app-muted">
-            <span class="text-4xl opacity-40">💬</span>
-            <p class="font-semibold text-app-primary">Pas encore de messages</p>
-            <p class="text-sm">Soyez le premier à écrire dans ce forum.</p>
-          </div>
-
-          <template v-else>
-            <template v-for="(msg, index) in messages" :key="msg.message_id">
-              <!-- Date separator -->
-              <div
-                v-if="index === 0 || formatDateGroup(messages[index - 1].creation_date) !== formatDateGroup(msg.creation_date)"
-                class="flex items-center justify-center my-3"
-              >
-                <span class="text-[11px] font-medium text-app-faint bg-white/5 border border-[var(--glass-border)] px-3 py-0.5 rounded-full">
-                  {{ formatDateGroup(msg.creation_date) }}
-                </span>
-              </div>
-
-              <!-- System message -->
-              <div v-if="msg.message_type === 'system'" class="flex justify-center my-1">
-                <span class="text-xs text-app-muted bg-white/[0.06] border border-[var(--glass-border)] px-3.5 py-1 rounded-full text-center max-w-[80%]">
-                  {{ msg.content }}
-                </span>
-              </div>
-
-              <!-- User message -->
-              <div
-                v-else
-                class="flex py-0.5"
-                :class="isOwnMessage(msg) ? 'justify-end' : 'justify-start'"
-              >
-                <div
-                  class="max-w-[78%] px-3.5 py-2.5"
-                  :class="isOwnMessage(msg)
-                    ? 'bg-[var(--primary-25)] border border-[var(--primary-30)] rounded-[18px_18px_4px_18px]'
-                    : 'bg-white/[0.07] border border-[var(--glass-border)] rounded-[18px_18px_18px_4px]'"
-                >
-                  <p v-if="!isOwnMessage(msg)" class="text-[11px] font-semibold text-[var(--primary)] mb-1">{{ getAuthorName(msg) }}</p>
-                  <p class="text-sm leading-snug break-words text-app-primary">{{ msg.content }}</p>
-                  <p class="text-[10px] text-app-faint mt-1 text-right">{{ formatTime(msg.creation_date) }}</p>
-                </div>
-              </div>
-            </template>
-          </template>
-        </div>
-
-        <!-- Input bar -->
-        <div class="glass rounded-full flex items-center gap-2.5 px-3.5 py-2.5 shrink-0">
-          <input
-            v-model="messageText"
-            type="text"
-            class="flex-1 bg-transparent border-none outline-none text-sm text-app-primary font-[inherit] placeholder:text-app-faint"
-            placeholder="Écrire un message..."
-            @keydown.enter.prevent="sendMessage"
-            :disabled="sending"
-          />
-          <button
-            class="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] border-none text-white flex items-center justify-center cursor-pointer transition-all active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
-            @click="sendMessage"
-            :disabled="!messageText.trim() || sending"
-            aria-label="Envoyer"
+          <!-- Avatar transport -->
+          <div
+            class="w-12 h-12 rounded-full flex items-center justify-center shrink-0 border border-[var(--primary-25)]"
+            :class="t.transport_type === 'ship' ? 'bg-blue-500/10' : 'bg-sky-400/10'"
           >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"/>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            <svg v-if="t.transport_type === 'ship'" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-blue-400">
+              <path d="M2 21c.6.5 1.2 1 2.5 1C7 22 7 21 9.5 21s2.5 1 5 1 2.5-1 5-1c1.3 0 1.9.5 2.5 1"/>
+              <path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/>
+              <path d="M19 13V7a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v6"/>
+              <path d="M12 10v4"/><path d="M12 2v3"/>
             </svg>
-          </button>
+            <svg v-else width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="text-sky-400">
+              <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21 4 19 4H6L4 2 2 2v2l2 2-3 7 2.8.6"/>
+              <path d="M15 15l-5.4-5.4"/><path d="M5 19 7 21"/><path d="M19 19l2 2"/>
+            </svg>
+          </div>
+
+          <!-- Info -->
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-[15px] font-semibold text-app-primary truncate">
+                {{ t.origin_country }} → {{ t.destination_country }}
+              </p>
+              <span v-if="t.departure_date" class="text-[11px] text-app-faint shrink-0">
+                {{ formatDate(t.departure_date) }}
+              </span>
+            </div>
+            <div class="flex items-center justify-between gap-2 mt-0.5">
+              <p class="text-[13px] text-app-muted truncate">
+                {{ t.itinerary || (t.transport_type === 'ship' ? 'Transport maritime' : 'Transport aérien') }}
+              </p>
+              <StatusBadge :status="t.status" />
+            </div>
+          </div>
+
+          <!-- Chevron -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint shrink-0">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
         </div>
-      </template>
+      </div>
+
     </div>
   </AppLayout>
 </template>

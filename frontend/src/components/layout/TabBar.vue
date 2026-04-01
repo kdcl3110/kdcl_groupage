@@ -1,9 +1,12 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRoute } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
+const auth = useAuthStore()
 
-const tabs = [
+const allTabs = [
   {
     name: 'voyages',
     path: '/voyages',
@@ -28,6 +31,7 @@ const tabs = [
     name: 'destinataires',
     path: '/destinataires',
     label: 'Contacts',
+    roles: ['client'],
     icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
       <circle cx="9" cy="7" r="4"/>
@@ -54,13 +58,25 @@ const tabs = [
   },
 ]
 
-function isActive(tab: (typeof tabs)[0]) {
+const tabs = computed(() => {
+  const role = auth.user?.role
+  return allTabs.filter((tab) => {
+    if (!tab.roles) return true
+    return role ? tab.roles.includes(role) : true
+  })
+})
+
+// Only show the tab bar on top-level pages, not on detail/sub-pages
+const mainPaths = ['/voyages', '/colis', '/destinataires', '/forum', '/profil']
+const isMainPage = computed(() => mainPaths.includes(route.path))
+
+function isActive(tab: (typeof allTabs)[0]) {
   return route.path === tab.path || route.path.startsWith(tab.path + '/')
 }
 </script>
 
 <template>
-  <nav class="tab-bar lg:hidden">
+  <nav v-if="isMainPage" class="tab-bar">
     <div class="tab-bar__inner">
       <RouterLink
         v-for="tab in tabs"
@@ -152,6 +168,11 @@ function isActive(tab: (typeof tabs)[0]) {
   border-radius: 50%;
   background: var(--color-primary);
   box-shadow: 0 0 6px var(--color-primary);
+}
+
+/* ---- Desktop (≥ 1024px): hidden — SideNav takes over ---- */
+@media (min-width: 1024px) {
+  .tab-bar { display: none; }
 }
 
 /* ---- Tablet (≥ 640px): full-width bottom bar ---- */

@@ -1,6 +1,7 @@
 import api from './client'
 import type { User } from '@/types'
 
+
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<{ token: string; user: User }>('/auth/login', { email, password }),
@@ -17,4 +18,13 @@ export const authApi = {
     api.post<{ message: string }>('/auth/reset-password', { token, new_password }),
   changePassword: (current_password: string, new_password: string) =>
     api.put<{ message: string }>('/auth/change-password', { current_password, new_password }),
+  updateProfile: (data: {
+    first_name?: string
+    last_name?: string
+    phone?: string
+    street?: string
+    city?: string
+    country?: string
+    postal_code?: string
+  }) => api.put<User>('/auth/profile', data),
 }
