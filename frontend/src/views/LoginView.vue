@@ -4,6 +4,10 @@ import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api/auth'
 import { useToastStore } from '@/stores/toast'
+import PasswordInput from '@/components/common/PasswordInput.vue'
+import PhoneInput from '@/components/common/PhoneInput.vue'
+import ErrorAlert from '@/components/common/ErrorAlert.vue'
+import AppButton from '@/components/common/AppButton.vue'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -16,7 +20,6 @@ const panel = ref<'login' | 'register' | 'forgot'>('login')
 const form = reactive({ email: '', password: '' })
 const error = ref('')
 const loading = ref(false)
-const showLoginPassword = ref(false)
 
 async function handleLogin() {
   error.value = ''
@@ -41,12 +44,16 @@ async function handleLogin() {
 const registerForm = reactive({ first_name: '', last_name: '', email: '', phone: '', street: '', city: '', country: '', postal_code: '', password: '' })
 const registerError = ref('')
 const registerLoading = ref(false)
-const showRegisterPassword = ref(false)
+const registerPhoneValid = ref(false)
 
 async function handleRegister() {
   registerError.value = ''
   if (!registerForm.first_name || !registerForm.last_name || !registerForm.email || !registerForm.phone || !registerForm.street || !registerForm.city || !registerForm.country || !registerForm.password) {
     registerError.value = 'Veuillez remplir tous les champs.'
+    return
+  }
+  if (!registerPhoneValid.value) {
+    registerError.value = 'Veuillez entrer un numéro de téléphone valide.'
     return
   }
   registerLoading.value = true
@@ -143,32 +150,14 @@ function goToLogin() {
                 Mot de passe oublié ?
               </button>
             </div>
-            <div class="relative">
-              <input v-model="form.password" :type="showLoginPassword ? 'text' : 'password'" class="input-field w-full" placeholder="••••••••" autocomplete="current-password" :disabled="loading" style="padding-right: 44px;" />
-              <button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-app-faint hover:text-app-muted transition-colors cursor-pointer bg-transparent border-none p-1" @click="showLoginPassword = !showLoginPassword" tabindex="-1">
-                <svg v-if="showLoginPassword" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                </svg>
-                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                </svg>
-              </button>
-            </div>
+            <PasswordInput v-model="form.password" :disabled="loading" autocomplete="current-password" />
           </div>
 
-          <Transition name="fade">
-            <div v-if="error" class="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              {{ error }}
-            </div>
-          </Transition>
+          <ErrorAlert :message="error" />
 
-          <button type="submit" class="btn-primary w-full" :disabled="loading">
-            <span v-if="loading" class="btn-spinner" />
-            <span v-else>Se connecter</span>
-          </button>
+          <AppButton type="submit" :loading="loading" :full="true" loading-text="Connexion...">
+            Se connecter
+          </AppButton>
         </form>
 
         <div class="flex items-center gap-3 text-app-muted text-xs">
@@ -215,7 +204,7 @@ function goToLogin() {
 
           <div class="flex flex-col gap-1.5">
             <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Téléphone</label>
-            <input v-model="registerForm.phone" type="tel" class="input-field" placeholder="+32 470 00 00 00" autocomplete="tel" :disabled="registerLoading" />
+            <PhoneInput v-model="registerForm.phone" :disabled="registerLoading" @valid="registerPhoneValid = $event" />
           </div>
 
           <div class="flex flex-col gap-1.5">
@@ -241,32 +230,14 @@ function goToLogin() {
 
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Mot de passe</label>
-            <div class="relative">
-              <input v-model="registerForm.password" :type="showRegisterPassword ? 'text' : 'password'" class="input-field w-full" placeholder="Minimum 8 caractères" autocomplete="new-password" :disabled="registerLoading" style="padding-right: 44px;" />
-              <button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-app-faint hover:text-app-muted transition-colors cursor-pointer bg-transparent border-none p-1" @click="showRegisterPassword = !showRegisterPassword" tabindex="-1">
-                <svg v-if="showRegisterPassword" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
-                </svg>
-                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
-                </svg>
-              </button>
-            </div>
+            <PasswordInput v-model="registerForm.password" placeholder="Minimum 8 caractères" :disabled="registerLoading" autocomplete="new-password" />
           </div>
 
-          <Transition name="fade">
-            <div v-if="registerError" class="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              {{ registerError }}
-            </div>
-          </Transition>
+          <ErrorAlert :message="registerError" />
 
-          <button type="submit" class="btn-primary w-full" :disabled="registerLoading">
-            <span v-if="registerLoading" class="btn-spinner" />
-            <span v-else>Créer mon compte</span>
-          </button>
+          <AppButton type="submit" :loading="registerLoading" :full="true" loading-text="Création...">
+            Créer mon compte
+          </AppButton>
         </form>
       </div>
 
@@ -322,19 +293,11 @@ function goToLogin() {
               />
             </div>
 
-            <Transition name="fade">
-              <div v-if="forgotError" class="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                {{ forgotError }}
-              </div>
-            </Transition>
+            <ErrorAlert :message="forgotError" />
 
-            <button type="submit" class="btn-primary w-full" :disabled="forgotLoading">
-              <span v-if="forgotLoading" class="btn-spinner" />
-              <span v-else>Envoyer le lien</span>
-            </button>
+            <AppButton type="submit" :loading="forgotLoading" :full="true" loading-text="Envoi...">
+              Envoyer le lien
+            </AppButton>
           </form>
         </template>
       </div>
@@ -359,14 +322,4 @@ function goToLogin() {
 }
 .back-btn:hover { color: var(--text-primary); }
 
-.btn-spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  display: inline-block;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
 </style>

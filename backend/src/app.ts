@@ -44,7 +44,7 @@ function createApp(): Application {
     legacyHeaders: false,
     message: { status: 'error', message: 'Too many requests, please try again later.' },
   });
-  app.use('/api', limiter);
+  // app.use('/api', limiter);
 
   // Request logging
   app.use(morgan(env.isDev() ? 'dev' : 'combined'));

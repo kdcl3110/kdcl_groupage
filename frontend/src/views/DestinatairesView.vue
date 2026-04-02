@@ -1,6 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import ModalSheet from '@/components/common/ModalSheet.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorAlert from '@/components/common/ErrorAlert.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import RefreshButton from '@/components/common/RefreshButton.vue'
+import FloatingActionButton from '@/components/common/FloatingActionButton.vue'
+import PhoneInput from '@/components/common/PhoneInput.vue'
 import { recipientsApi } from '@/api/recipients'
 import type { Recipient } from '@/types'
 
@@ -11,6 +18,7 @@ const showSheet = ref(false)
 const editingRecipient = ref<Recipient | null>(null)
 const formLoading = ref(false)
 const formError = ref('')
+const formPhoneValid = ref(true)
 
 const form = reactive({
   first_name: '',
@@ -70,6 +78,10 @@ async function handleSubmit() {
     formError.value = 'Veuillez remplir tous les champs obligatoires.'
     return
   }
+  if (!formPhoneValid.value) {
+    formError.value = 'Veuillez entrer un numéro de téléphone valide.'
+    return
+  }
   formLoading.value = true
   try {
     const payload = {
@@ -120,20 +132,7 @@ onMounted(fetchRecipients)
       <!-- Header -->
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-extrabold text-app-primary tracking-tight">Destinataires</h1>
-        <button
-          class="w-9 h-9 rounded-full glass flex items-center justify-center text-app-muted transition-colors active:bg-[var(--glass-bg-hover)] cursor-pointer"
-          @click="fetchRecipients"
-          :disabled="loading"
-        >
-          <svg
-            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            :class="loading ? 'animate-spin' : ''"
-          >
-            <polyline points="23 4 23 10 17 10"/>
-            <polyline points="1 20 1 14 7 14"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-        </button>
+        <RefreshButton :loading="loading" @click="fetchRecipients" />
       </div>
 
       <!-- Loading -->
@@ -150,24 +149,12 @@ onMounted(fetchRecipients)
       </div>
 
       <!-- Error -->
-      <div v-else-if="error" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
-        <span class="text-5xl opacity-40">⚠️</span>
-        <p class="font-semibold text-app-primary">Erreur</p>
-        <p class="text-sm">{{ error }}</p>
-        <button
-          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer"
-          @click="fetchRecipients"
-        >
-          Réessayer
-        </button>
-      </div>
+      <EmptyState v-else-if="error" icon="⚠️" title="Erreur" :message="error">
+        <AppButton variant="outline" class="mt-1" @click="fetchRecipients">Réessayer</AppButton>
+      </EmptyState>
 
       <!-- Empty -->
-      <div v-else-if="recipients.length === 0" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
-        <span class="text-5xl opacity-40">👥</span>
-        <p class="font-semibold text-app-primary">Aucun destinataire</p>
-        <p class="text-sm">Ajoutez vos destinataires pour les associer à vos colis.</p>
-      </div>
+      <EmptyState v-else-if="recipients.length === 0" icon="👥" title="Aucun destinataire" message="Ajoutez vos destinataires pour les associer à vos colis." />
 
       <!-- List -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -219,41 +206,11 @@ onMounted(fetchRecipients)
       </div>
     </div>
 
-    <!-- FAB -->
-    <button
-      class="fixed bottom-22 sm:bottom-20 right-4 sm:right-6 lg:right-8 w-14 h-14 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] glow-primary shadow-[0_4px_16px_rgba(0,0,0,0.3)] flex items-center justify-center cursor-pointer z-50 border-none text-white transition-all active:scale-[0.93]"
-      @click="openCreate"
-      aria-label="Ajouter un destinataire"
-    >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"/>
-        <line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
-    </button>
+    <FloatingActionButton aria-label="Ajouter un destinataire" @click="openCreate" />
 
     <!-- Sheet -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showSheet" class="overlay flex items-end md:items-center justify-center" @click.self="showSheet = false">
-          <Transition name="slide-up">
-            <div v-if="showSheet" class="sheet w-full max-w-[430px] md:max-w-[520px] md:rounded-3xl rounded-t-3xl px-5 pt-6 pb-[calc(24px+env(safe-area-inset-bottom,0px))]">
-              <!-- Handle -->
-              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mb-5" />
-
-              <!-- Header -->
-              <div class="flex items-center justify-between mb-5">
-                <h2 class="text-lg font-bold text-app-primary">{{ editingRecipient ? 'Modifier' : 'Nouveau destinataire' }}</h2>
-                <button
-                  class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer"
-                  @click="showSheet = false"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
-              </div>
-
-              <form @submit.prevent="handleSubmit" class="flex flex-col gap-3.5">
+    <ModalSheet v-model="showSheet" :title="editingRecipient ? 'Modifier' : 'Nouveau destinataire'" max-width="430px">
+      <form @submit.prevent="handleSubmit" class="flex flex-col gap-3.5 px-5 py-5">
                 <div class="grid grid-cols-2 gap-3">
                   <div class="flex flex-col gap-1.5">
                     <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Prénom *</label>
@@ -267,7 +224,7 @@ onMounted(fetchRecipients)
 
                 <div class="flex flex-col gap-1.5">
                   <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Téléphone *</label>
-                  <input v-model="form.phone" type="tel" class="input-field" placeholder="+33 6 00 00 00 00" :disabled="formLoading" />
+                  <PhoneInput v-model="form.phone" :disabled="formLoading" @valid="formPhoneValid = $event" />
                 </div>
 
                 <div class="flex flex-col gap-1.5">
@@ -291,32 +248,11 @@ onMounted(fetchRecipients)
                   </div>
                 </div>
 
-                <Transition name="fade">
-                  <div v-if="formError" class="px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">{{ formError }}</div>
-                </Transition>
-
-                <button type="submit" class="btn-primary w-full" :disabled="formLoading">
-                  <span v-if="formLoading" class="btn-spinner" />
-                  <span v-else>{{ editingRecipient ? 'Enregistrer' : 'Ajouter' }}</span>
-                </button>
-              </form>
-            </div>
-          </Transition>
-        </div>
-      </Transition>
-    </Teleport>
+        <ErrorAlert :message="formError" />
+        <AppButton type="submit" :loading="formLoading" :full="true" :loading-text="editingRecipient ? 'Enregistrement...' : 'Ajout...'">
+          {{ editingRecipient ? 'Enregistrer' : 'Ajouter' }}
+        </AppButton>
+      </form>
+    </ModalSheet>
   </AppLayout>
 </template>
-
-<style scoped>
-.btn-spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  display: inline-block;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-</style>

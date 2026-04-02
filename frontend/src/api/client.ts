@@ -14,8 +14,6 @@ api.interceptors.response.use(
   (res) => { stopLoading(); return res },
   (err) => {
     stopLoading()
-    // 401 sur un endpoint /auth/ = mauvaises credentials → laisser le composant gérer l'erreur
-    // 401 ailleurs = session expirée → redirection forcée
     if (err.response?.status === 401 && !err.config?.url?.startsWith('/auth/')) {
       localStorage.removeItem('token')
       localStorage.removeItem('user')

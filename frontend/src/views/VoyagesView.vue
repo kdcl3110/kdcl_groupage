@@ -3,6 +3,12 @@ import { ref, computed, reactive, onMounted, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TravelCard from '@/components/travel/TravelCard.vue'
 import SearchableSelect from '@/components/common/SearchableSelect.vue'
+import ModalSheet from '@/components/common/ModalSheet.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorAlert from '@/components/common/ErrorAlert.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import RefreshButton from '@/components/common/RefreshButton.vue'
+import FloatingActionButton from '@/components/common/FloatingActionButton.vue'
 import { travelsApi } from '@/api/travels'
 import { packagesApi } from '@/api/packages'
 import { countriesApi } from '@/api/countries'
@@ -237,21 +243,7 @@ onMounted(fetchTravels)
       <!-- Page title -->
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-extrabold text-app-primary tracking-tight">Voyages</h1>
-        <button
-          class="w-9 h-9 rounded-full glass flex items-center justify-center text-app-muted transition-colors active:bg-[var(--glass-bg-hover)] cursor-pointer"
-          @click="fetchTravels"
-          :disabled="loading"
-          aria-label="Actualiser"
-        >
-          <svg
-            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            :class="loading ? 'animate-spin' : ''"
-          >
-            <polyline points="23 4 23 10 17 10"/>
-            <polyline points="1 20 1 14 7 14"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-        </button>
+        <RefreshButton :loading="loading" @click="fetchTravels" />
       </div>
 
       <!-- Filter chips — manager: by status / client: by participation -->
@@ -291,29 +283,18 @@ onMounted(fetchTravels)
       </div>
 
       <!-- Error -->
-      <div v-else-if="error" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
-        <p class="font-semibold text-app-primary">Erreur de chargement</p>
-        <p class="text-sm">{{ error }}</p>
-        <button
-          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer"
-          @click="fetchTravels"
-        >
-          Réessayer
-        </button>
-      </div>
+      <EmptyState v-else-if="error" icon="⚠️" title="Erreur de chargement" :message="error">
+        <AppButton variant="outline" class="mt-1" @click="fetchTravels">Réessayer</AppButton>
+      </EmptyState>
 
       <!-- Empty -->
-      <div v-else-if="filtered.length === 0" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
-        <p class="font-semibold text-app-primary">Aucun voyage</p>
-        <p class="text-sm">
-          <template v-if="isManager">
-            {{ activeFilter === 'all' ? 'Aucun voyage disponible pour le moment.' : 'Aucun voyage avec ce statut.' }}
-          </template>
-          <template v-else>
-            {{ clientFilter === 'all' ? 'Aucun voyage disponible pour le moment.' : 'Aucun voyage correspondant à ce filtre.' }}
-          </template>
-        </p>
-      </div>
+      <EmptyState
+        v-else-if="filtered.length === 0"
+        title="Aucun voyage"
+        :message="isManager
+          ? (activeFilter === 'all' ? 'Aucun voyage disponible pour le moment.' : 'Aucun voyage avec ce statut.')
+          : (clientFilter === 'all' ? 'Aucun voyage disponible pour le moment.' : 'Aucun voyage correspondant à ce filtre.')"
+      />
 
       <!-- List -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -326,57 +307,19 @@ onMounted(fetchTravels)
 
       <!-- Voir plus -->
       <div v-if="(hasMore || loadingMore) && !loading" class="flex justify-center pb-2">
-        <button
-          class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer disabled:opacity-50"
-          :disabled="loadingMore"
-          @click="fetchTravels(false)"
-        >
-          <svg v-if="loadingMore" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-          </svg>
-          {{ loadingMore ? 'Chargement...' : 'Voir plus' }}
-        </button>
+        <AppButton variant="outline" :loading="loadingMore" loading-text="Chargement..." @click="fetchTravels(false)">
+          Voir plus
+        </AppButton>
       </div>
     </div>
 
     <!-- FAB -->
-    <button
-      v-if="isManager"
-      class="fixed bottom-22 sm:bottom-20 right-4 sm:right-6 lg:right-8 w-14 h-14 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] glow-primary shadow-[0_4px_16px_rgba(0,0,0,0.3)] flex items-center justify-center cursor-pointer z-50 border-none text-white transition-all active:scale-[0.93]"
-      @click="openSheet"
-      aria-label="Nouveau voyage"
-    >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"/>
-        <line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
-    </button>
+    <FloatingActionButton v-if="isManager" aria-label="Nouveau voyage" @click="openSheet" />
 
     <!-- Creation sheet -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showSheet" class="overlay flex items-end md:items-center justify-center" @click.self="showSheet = false">
-          <Transition name="slide-up">
-            <div v-if="showSheet" class="sheet w-full max-w-[480px] md:rounded-3xl rounded-t-3xl flex flex-col" style="max-height: 92dvh;">
-              <!-- Handle -->
-              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
+    <ModalSheet v-model="showSheet" title="Nouveau voyage">
 
-              <!-- Sheet header -->
-              <div class="flex items-center justify-between px-5 py-4 shrink-0">
-                <h2 class="text-[17px] font-extrabold text-app-primary">Nouveau voyage</h2>
-                <button
-                  class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none text-lg leading-none transition-colors hover:text-app-primary"
-                  @click="showSheet = false"
-                  aria-label="Fermer"
-                >
-                  ×
-                </button>
-              </div>
-
-              <div class="border-t border-[var(--glass-border)] shrink-0" />
-
-              <!-- Scrollable body -->
-              <div class="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-5">
+      <div class="px-5 py-5 flex flex-col gap-5">
 
                 <!-- Transport type -->
                 <div class="flex flex-col gap-2">
@@ -549,38 +492,14 @@ onMounted(fetchTravels)
                   </div>
                 </div>
 
-                <!-- Error -->
-                <div v-if="formError" class="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <line x1="12" y1="8" x2="12" y2="12"/>
-                    <line x1="12" y1="16" x2="12.01" y2="16"/>
-                  </svg>
-                  {{ formError }}
-                </div>
-              </div>
+                <ErrorAlert :message="formError" />
+      </div>
 
-              <!-- Sheet footer -->
-              <div class="border-t border-[var(--glass-border)] shrink-0 px-5 py-4">
-                <button
-                  class="btn-primary w-full flex items-center justify-center gap-2"
-                  :disabled="formLoading"
-                  @click="handleCreate"
-                >
-                  <svg
-                    v-if="formLoading"
-                    class="animate-spin"
-                    width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                  >
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                  </svg>
-                  <span>{{ formLoading ? 'Création...' : 'Créer le voyage' }}</span>
-                </button>
-              </div>
-            </div>
-          </Transition>
-        </div>
-      </Transition>
-    </Teleport>
+      <template #footer>
+        <AppButton :loading="formLoading" :full="true" loading-text="Création..." @click="handleCreate">
+          Créer le voyage
+        </AppButton>
+      </template>
+    </ModalSheet>
   </AppLayout>
 </template>

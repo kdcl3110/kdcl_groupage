@@ -2,6 +2,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import { Op } from "sequelize";
+import { isValidPhoneNumber } from "libphonenumber-js";
 
 import { User, UserRole, UserStatus } from "../../models/User.model";
 import { env } from "../../configs/env.config";
@@ -131,6 +132,10 @@ export class AuthService {
     const user = await User.findByPk(userId);
     if (!user) throw new AppError(404, "User not found");
 
+    if (data.phone && !isValidPhoneNumber(data.phone)) {
+      throw new AppError(400, "Invalid phone number format");
+    }
+
     await user.update(data);
     return this.sanitize(user);
   }
@@ -189,6 +194,10 @@ export class AuthService {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(data.email)) {
       throw new AppError(400, "Invalid email format");
+    }
+
+    if (data.phone && !isValidPhoneNumber(data.phone)) {
+      throw new AppError(400, "Invalid phone number format");
     }
 
     this.validatePasswordStrength(data.password);

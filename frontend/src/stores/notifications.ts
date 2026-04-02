@@ -10,7 +10,7 @@ export const useNotificationStore = defineStore('notifications', () => {
   let source: EventSource | null = null
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
 
-  // ── SSE connection ────────────────────────────────────────────────────────
+  // SSE connection
 
   function connect() {
     const token = localStorage.getItem('token')
@@ -52,7 +52,7 @@ export const useNotificationStore = defineStore('notifications', () => {
     if (source) { source.close(); source = null }
   }
 
-  // ── Fallback HTTP fetch (used by the drawer on open) ─────────────────────
+  // Fallback HTTP fetch (used by the drawer on open) 
 
   async function fetch() {
     try {
@@ -63,7 +63,7 @@ export const useNotificationStore = defineStore('notifications', () => {
     }
   }
 
-  // ── Mark read ─────────────────────────────────────────────────────────────
+  // Mark read
 
   async function markRead(id: number) {
     const notif = notifications.value.find((n) => n.notification_id === id)

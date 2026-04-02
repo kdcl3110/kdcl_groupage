@@ -3,6 +3,13 @@ import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
+import ModalSheet from '@/components/common/ModalSheet.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import ErrorAlert from '@/components/common/ErrorAlert.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import RefreshButton from '@/components/common/RefreshButton.vue'
+import FloatingActionButton from '@/components/common/FloatingActionButton.vue'
+import PhoneInput from '@/components/common/PhoneInput.vue'
 import { packagesApi } from '@/api/packages'
 import { recipientsApi } from '@/api/recipients'
 import { travelsApi } from '@/api/travels'
@@ -64,12 +71,14 @@ const images = ref<(File | null)[]>([null, null, null, null])
 const showNewRecipient = ref(false)
 const newRecipientLoading = ref(false)
 const newRecipientError = ref('')
+const newRecipientPhoneValid = ref(false)
 const newRecipient = reactive({ first_name: '', last_name: '', phone: '', email: '', address: '', city: '', country: '' })
 
 function openNewRecipient() {
   newRecipient.first_name = ''; newRecipient.last_name = ''; newRecipient.phone = ''
   newRecipient.email = ''; newRecipient.address = ''; newRecipient.city = ''; newRecipient.country = ''
   newRecipientError.value = ''
+  newRecipientPhoneValid.value = false
   showNewRecipient.value = true
 }
 
@@ -77,6 +86,10 @@ async function saveNewRecipient() {
   newRecipientError.value = ''
   if (!newRecipient.first_name || !newRecipient.last_name || !newRecipient.phone || !newRecipient.address || !newRecipient.city || !newRecipient.country) {
     newRecipientError.value = 'Veuillez remplir tous les champs obligatoires.'
+    return
+  }
+  if (!newRecipientPhoneValid.value) {
+    newRecipientError.value = 'Veuillez entrer un numéro de téléphone valide.'
     return
   }
   newRecipientLoading.value = true
@@ -303,20 +316,7 @@ onMounted(fetchPackages)
       <!-- Header -->
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-extrabold text-app-primary tracking-tight">Colis</h1>
-        <button
-          class="w-9 h-9 rounded-full glass flex items-center justify-center text-app-muted transition-colors active:bg-[var(--glass-bg-hover)] cursor-pointer"
-          @click="fetchPackages"
-          :disabled="loading"
-        >
-          <svg
-            width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-            :class="loading ? 'animate-spin' : ''"
-          >
-            <polyline points="23 4 23 10 17 10"/>
-            <polyline points="1 20 1 14 7 14"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-        </button>
+        <RefreshButton :loading="loading" @click="fetchPackages" />
       </div>
 
       <!-- Filter chips (client only) -->
@@ -341,26 +341,17 @@ onMounted(fetchPackages)
       </div>
 
       <!-- Error -->
-      <div v-else-if="error" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
-        <span class="text-5xl opacity-40">⚠️</span>
-        <p class="font-semibold text-app-primary">Erreur</p>
-        <p class="text-sm">{{ error }}</p>
-        <button
-          class="mt-3 inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer"
-          @click="fetchPackages"
-        >
-          Réessayer
-        </button>
-      </div>
+      <EmptyState v-else-if="error" icon="⚠️" title="Erreur" :message="error">
+        <AppButton variant="outline" class="mt-1" @click="fetchPackages">Réessayer</AppButton>
+      </EmptyState>
 
       <!-- Empty -->
-      <div v-else-if="filtered.length === 0" class="flex flex-col items-center gap-3 py-12 px-6 text-center text-app-muted">
-        <span class="text-5xl opacity-40">📦</span>
-        <p class="font-semibold text-app-primary">Aucun colis</p>
-        <p class="text-sm">
-          {{ activeFilter === 'all' ? 'Ajoutez votre premier colis en cliquant sur le bouton +.' : 'Aucun colis avec ce statut pour le moment.' }}
-        </p>
-      </div>
+      <EmptyState
+        v-else-if="filtered.length === 0"
+        icon="📦"
+        title="Aucun colis"
+        :message="activeFilter === 'all' ? 'Ajoutez votre premier colis en cliquant sur le bouton +.' : 'Aucun colis avec ce statut pour le moment.'"
+      />
 
       <!-- List -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -431,81 +422,48 @@ onMounted(fetchPackages)
 
       <!-- Voir plus -->
       <div v-if="(hasMore || loadingMore) && !loading" class="flex justify-center pb-2">
-        <button
-          class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer disabled:opacity-50"
-          :disabled="loadingMore"
-          @click="fetchPackages(false)"
-        >
-          <svg v-if="loadingMore" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-          </svg>
-          {{ loadingMore ? 'Chargement...' : 'Voir plus' }}
-        </button>
+        <AppButton variant="outline" :loading="loadingMore" loading-text="Chargement..." @click="fetchPackages(false)">
+          Voir plus
+        </AppButton>
       </div>
     </div>
 
-    <!-- FAB -->
-    <button
-      class="fixed bottom-22 sm:bottom-20 right-4 sm:right-6 lg:right-8 w-14 h-14 rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] glow-primary shadow-[0_4px_16px_rgba(0,0,0,0.3)] flex items-center justify-center cursor-pointer z-50 border-none text-white transition-all active:scale-[0.93]"
-      @click="openSheet"
-      aria-label="Nouveau colis"
-    >
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"/>
-        <line x1="5" y1="12" x2="19" y2="12"/>
-      </svg>
-    </button>
+    <FloatingActionButton aria-label="Nouveau colis" @click="openSheet" />
 
     <!-- Wizard Sheet -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showSheet" class="overlay flex items-end md:items-center justify-center" @click.self="showSheet = false">
-          <Transition name="slide-up">
-            <div v-if="showSheet" class="sheet w-full max-w-[480px] md:rounded-3xl rounded-t-3xl flex flex-col" style="max-height: 92dvh;">
-              <!-- Handle -->
-              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
+    <ModalSheet v-model="showSheet">
+      <template #header>
+        <div class="flex items-center gap-3">
+          <button
+            v-if="step > 1"
+            class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer"
+            @click="prevStep"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="15 18 9 12 15 6"/>
+            </svg>
+          </button>
+          <h2 class="text-[17px] font-bold text-app-primary">
+            <span v-if="step === 1">Informations</span>
+            <span v-else-if="step === 2">Destinataire &amp; Photos</span>
+            <span v-else-if="step === 3">Choisir un voyage</span>
+            <span v-else>Récapitulatif</span>
+          </h2>
+        </div>
+      </template>
 
-              <!-- Sheet header -->
-              <div class="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
-                <div class="flex items-center gap-3">
-                  <button
-                    v-if="step > 1"
-                    class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer"
-                    @click="prevStep"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="15 18 9 12 15 6"/>
-                    </svg>
-                  </button>
-                  <h2 class="text-[17px] font-bold text-app-primary">
-                    <span v-if="step === 1">Informations</span>
-                    <span v-else-if="step === 2">Destinataire &amp; Photos</span>
-                    <span v-else-if="step === 3">Choisir un voyage</span>
-                    <span v-else>Récapitulatif</span>
-                  </h2>
-                </div>
-                <button
-                  class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer"
-                  @click="showSheet = false"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                  </svg>
-                </button>
-              </div>
+      <!-- Step indicators -->
+      <div class="flex items-center justify-center gap-1.5 pt-4 px-5">
+        <div
+          v-for="i in 4"
+          :key="i"
+          class="h-1.5 rounded-full transition-all duration-300"
+          :class="i === step ? 'w-6 bg-[var(--primary)]' : i < step ? 'w-3 bg-[var(--primary-50)]' : 'w-3 bg-white/15'"
+        />
+      </div>
 
-              <!-- Step indicators -->
-              <div class="flex items-center justify-center gap-1.5 pb-4 shrink-0">
-                <div
-                  v-for="i in 4"
-                  :key="i"
-                  class="h-1.5 rounded-full transition-all duration-300"
-                  :class="i === step ? 'w-6 bg-[var(--primary)]' : i < step ? 'w-3 bg-[var(--primary-50)]' : 'w-3 bg-white/15'"
-                />
-              </div>
-
-              <!-- Scrollable content -->
-              <div class="flex-1 overflow-y-auto px-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))]">
+      <!-- Scrollable content -->
+      <div class="px-5 pb-5 pt-4">
 
                 <!-- ── Step 1: Basic info ── -->
                 <div v-if="step === 1" class="flex flex-col gap-3.5">
@@ -540,16 +498,9 @@ onMounted(fetchPackages)
                     />
                   </div>
 
-                  <Transition name="fade">
-                    <div v-if="formError" class="px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">{{ formError }}</div>
-                  </Transition>
+                  <ErrorAlert :message="formError" />
 
-                  <button class="btn-primary w-full" @click="nextStep">
-                    Suivant
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                  </button>
+                  <AppButton :full="true" @click="nextStep">Suivant</AppButton>
                 </div>
 
                 <!-- ── Step 2: Recipient + Images ── -->
@@ -581,7 +532,7 @@ onMounted(fetchPackages)
                         <input v-model="newRecipient.first_name" type="text" class="input-field" placeholder="Prénom *" :disabled="newRecipientLoading" />
                         <input v-model="newRecipient.last_name" type="text" class="input-field" placeholder="Nom *" :disabled="newRecipientLoading" />
                       </div>
-                      <input v-model="newRecipient.phone" type="tel" class="input-field" placeholder="Téléphone *" :disabled="newRecipientLoading" />
+                      <PhoneInput v-model="newRecipient.phone" placeholder="Téléphone *" :disabled="newRecipientLoading" @valid="newRecipientPhoneValid = $event" />
                       <input v-model="newRecipient.email" type="email" class="input-field" placeholder="Email (optionnel)" :disabled="newRecipientLoading" />
                       <input v-model="newRecipient.address" type="text" class="input-field" placeholder="Adresse *" :disabled="newRecipientLoading" />
                       <div class="grid grid-cols-2 gap-2">
@@ -596,15 +547,7 @@ onMounted(fetchPackages)
                           @click="showNewRecipient = false"
                           :disabled="newRecipientLoading"
                         >Annuler</button>
-                        <button
-                          type="button"
-                          class="flex-1 btn-primary py-2 text-sm flex items-center justify-center gap-2"
-                          @click="saveNewRecipient"
-                          :disabled="newRecipientLoading"
-                        >
-                          <span v-if="newRecipientLoading" class="btn-spinner" />
-                          <span v-else>Créer</span>
-                        </button>
+                        <AppButton :loading="newRecipientLoading" loading-text="Création..." class="flex-1" @click="saveNewRecipient">Créer</AppButton>
                       </div>
                     </div>
 
@@ -697,16 +640,9 @@ onMounted(fetchPackages)
                     </div>
                   </div>
 
-                  <Transition name="fade">
-                    <div v-if="formError" class="px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">{{ formError }}</div>
-                  </Transition>
+                  <ErrorAlert :message="formError" />
 
-                  <button class="btn-primary w-full" @click="nextStep">
-                    Suivant
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                  </button>
+                  <AppButton :full="true" @click="nextStep">Suivant</AppButton>
                 </div>
 
                 <!-- ── Step 3: Travel ── -->
@@ -797,12 +733,7 @@ onMounted(fetchPackages)
                     </div>
                   </div>
 
-                  <button class="btn-primary w-full mt-1" @click="nextStep" :disabled="!step3Valid">
-                    Suivant
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                  </button>
+                  <AppButton :full="true" class="mt-1" :disabled="!step3Valid" @click="nextStep">Suivant</AppButton>
                 </div>
 
                 <!-- ── Step 4: Summary ── -->
@@ -857,22 +788,15 @@ onMounted(fetchPackages)
                     </div>
                   </div>
 
-                  <Transition name="fade">
-                    <div v-if="formError" class="px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">{{ formError }}</div>
-                  </Transition>
+                  <ErrorAlert :message="formError" />
 
-                  <button class="btn-primary w-full" @click="handleSubmit" :disabled="formLoading">
-                    <span v-if="formLoading" class="btn-spinner" />
-                    <span v-else>Confirmer et créer le colis</span>
-                  </button>
+                  <AppButton :full="true" :loading="formLoading" loading-text="Création..." @click="handleSubmit">
+                    Confirmer et créer le colis
+                  </AppButton>
                 </div>
 
-              </div><!-- end scrollable -->
-            </div>
-          </Transition>
-        </div>
-      </Transition>
-    </Teleport>
+      </div><!-- end scrollable -->
+    </ModalSheet>
   </AppLayout>
 </template>
 
@@ -884,14 +808,4 @@ onMounted(fetchPackages)
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
-.btn-spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  display: inline-block;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
 </style>

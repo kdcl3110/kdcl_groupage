@@ -1,4 +1,5 @@
 import { Op } from 'sequelize';
+import { isValidPhoneNumber } from 'libphonenumber-js';
 import { Recipient } from '../../models/Recipient.model';
 import { Package, PackageStatus } from '../../models/Package.model';
 import { AppError } from '../../middlewares/errorHandler';
@@ -32,6 +33,10 @@ export class RecipientService {
 
   async update(recipientId: number, clientId: number, data: UpdateRecipientDto): Promise<Recipient> {
     const recipient = await this.findOwned(recipientId, clientId);
+
+    if (data.phone && !isValidPhoneNumber(data.phone)) {
+      throw new AppError(400, 'Invalid phone number format');
+    }
 
     const patch: Record<string, unknown> = {};
     if (data.first_name !== undefined) patch.first_name = data.first_name;
@@ -84,6 +89,9 @@ export class RecipientService {
       if (!data[field]?.toString().trim()) {
         throw new AppError(400, `Field "${field}" is required`);
       }
+    }
+    if (!isValidPhoneNumber(data.phone)) {
+      throw new AppError(400, 'Invalid phone number format');
     }
   }
 }

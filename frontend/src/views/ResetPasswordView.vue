@@ -2,6 +2,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { authApi } from '@/api/auth'
+import PasswordInput from '@/components/common/PasswordInput.vue'
+import PasswordStrengthBar from '@/components/common/PasswordStrengthBar.vue'
+import ErrorAlert from '@/components/common/ErrorAlert.vue'
+import AppButton from '@/components/common/AppButton.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -13,37 +17,13 @@ const confirmPassword = ref('')
 const loading = ref(false)
 const error = ref('')
 const success = ref(false)
-const showNew = ref(false)
-const showConfirm = ref(false)
 
-// If no token in URL, show an error immediately
 const missingToken = computed(() => !token.value)
 
 onMounted(() => {
   if (missingToken.value) {
     error.value = 'Lien invalide ou expiré. Veuillez recommencer la procédure.'
   }
-})
-
-const passwordStrength = computed(() => {
-  const p = newPassword.value
-  if (!p) return 0
-  let score = 0
-  if (p.length >= 8) score++
-  if (/[A-Z]/.test(p)) score++
-  if (/[0-9]/.test(p)) score++
-  if (/[^A-Za-z0-9]/.test(p)) score++
-  return score
-})
-
-const strengthLabel = computed(() => {
-  const labels = ['', 'Faible', 'Moyen', 'Bon', 'Fort']
-  return labels[passwordStrength.value] ?? ''
-})
-
-const strengthColor = computed(() => {
-  const colors = ['', 'bg-red-400', 'bg-orange-400', 'bg-yellow-400', 'bg-green-400']
-  return colors[passwordStrength.value] ?? ''
 })
 
 async function handleReset() {
@@ -75,7 +55,6 @@ async function handleReset() {
 
 <template>
   <div class="min-h-dvh flex items-center justify-center px-4 py-8 sm:p-8 relative overflow-hidden">
-    <!-- Bg glow -->
     <div class="absolute -top-[150px] left-1/2 -translate-x-1/2 w-[400px] h-[400px] bg-[radial-gradient(circle,var(--primary-25)_0%,transparent_70%)] pointer-events-none" />
 
     <div class="w-full max-w-[460px] flex flex-col items-center gap-6">
@@ -108,14 +87,10 @@ async function handleReset() {
             </div>
             <div>
               <p class="text-base font-bold text-app-primary">Mot de passe modifié !</p>
-              <p class="text-sm text-app-muted mt-1.5">
-                Votre mot de passe a été réinitialisé avec succès.
-              </p>
+              <p class="text-sm text-app-muted mt-1.5">Votre mot de passe a été réinitialisé avec succès.</p>
             </div>
           </div>
-          <button class="btn-primary w-full" @click="router.push('/login')">
-            Se connecter
-          </button>
+          <AppButton :full="true" @click="router.push('/login')">Se connecter</AppButton>
         </template>
 
         <!-- ── Invalid token ── -->
@@ -133,9 +108,7 @@ async function handleReset() {
               <p class="text-sm text-app-muted mt-1.5">Ce lien est invalide ou a expiré. Veuillez recommencer la procédure.</p>
             </div>
           </div>
-          <button class="btn-primary w-full" @click="router.push('/login')">
-            Retour à la connexion
-          </button>
+          <AppButton :full="true" @click="router.push('/login')">Retour à la connexion</AppButton>
         </template>
 
         <!-- ── Reset form ── -->
@@ -146,78 +119,15 @@ async function handleReset() {
           </div>
 
           <form @submit.prevent="handleReset" class="flex flex-col gap-4">
-            <!-- New password -->
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Nouveau mot de passe</label>
-              <div class="relative">
-                <input
-                  v-model="newPassword"
-                  :type="showNew ? 'text' : 'password'"
-                  class="input-field"
-                  placeholder="Minimum 8 caractères"
-                  autocomplete="new-password"
-                  :disabled="loading"
-                  style="padding-right: 44px;"
-                />
-                <button
-                  type="button"
-                  class="absolute right-3 top-1/2 -translate-y-1/2 text-app-faint hover:text-app-muted transition-colors cursor-pointer bg-transparent border-none p-1"
-                  @click="showNew = !showNew"
-                  tabindex="-1"
-                >
-                  <svg v-if="showNew" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                  <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-              </div>
-              <!-- Strength bar -->
-              <div v-if="newPassword" class="flex flex-col gap-1">
-                <div class="flex gap-1">
-                  <div
-                    v-for="i in 4" :key="i"
-                    class="flex-1 h-1 rounded-full transition-all duration-300"
-                    :class="i <= passwordStrength ? strengthColor : 'bg-white/10'"
-                  />
-                </div>
-                <p class="text-[11px]" :class="strengthColor.replace('bg-', 'text-')">{{ strengthLabel }}</p>
-              </div>
+              <PasswordInput v-model="newPassword" placeholder="Minimum 8 caractères" :disabled="loading" autocomplete="new-password" />
+              <PasswordStrengthBar :password="newPassword" />
             </div>
 
-            <!-- Confirm password -->
             <div class="flex flex-col gap-2">
               <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Confirmer le mot de passe</label>
-              <div class="relative">
-                <input
-                  v-model="confirmPassword"
-                  :type="showConfirm ? 'text' : 'password'"
-                  class="input-field"
-                  placeholder="••••••••"
-                  autocomplete="new-password"
-                  :disabled="loading"
-                  style="padding-right: 44px;"
-                />
-                <button
-                  type="button"
-                  class="absolute right-3 top-1/2 -translate-y-1/2 text-app-faint hover:text-app-muted transition-colors cursor-pointer bg-transparent border-none p-1"
-                  @click="showConfirm = !showConfirm"
-                  tabindex="-1"
-                >
-                  <svg v-if="showConfirm" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
-                    <line x1="1" y1="1" x2="23" y2="23"/>
-                  </svg>
-                  <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
-                    <circle cx="12" cy="12" r="3"/>
-                  </svg>
-                </button>
-              </div>
-              <!-- Match indicator -->
+              <PasswordInput v-model="confirmPassword" :disabled="loading" autocomplete="new-password" />
               <Transition name="fade">
                 <p
                   v-if="confirmPassword && newPassword"
@@ -235,19 +145,11 @@ async function handleReset() {
               </Transition>
             </div>
 
-            <Transition name="fade">
-              <div v-if="error" class="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                </svg>
-                {{ error }}
-              </div>
-            </Transition>
+            <ErrorAlert :message="error" />
 
-            <button type="submit" class="btn-primary w-full" :disabled="loading">
-              <span v-if="loading" class="btn-spinner" />
-              <span v-else>Réinitialiser le mot de passe</span>
-            </button>
+            <AppButton type="submit" :loading="loading" :full="true" loading-text="Réinitialisation...">
+              Réinitialiser le mot de passe
+            </AppButton>
           </form>
 
           <button
@@ -267,16 +169,3 @@ async function handleReset() {
     </div>
   </div>
 </template>
-
-<style scoped>
-.btn-spinner {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: white;
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-  display: inline-block;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-</style>
