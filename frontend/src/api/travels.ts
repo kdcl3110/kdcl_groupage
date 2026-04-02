@@ -2,7 +2,7 @@ import api from './client'
 import type { Travel, ForumMessage } from '@/types'
 
 export const travelsApi = {
-  getAll: (params?: Record<string, string>) => api.get<Travel[]>('/travels', { params }),
+  getAll: (params?: Record<string, string>) => api.get<{ data: Travel[]; hasMore: boolean }>('/travels', { params }),
   getById: (id: number) => api.get<Travel>(`/travels/${id}`),
   create: (data: object) => api.post<Travel>('/travels', data),
   update: (id: number, data: object) => api.put<Travel>(`/travels/${id}`, data),

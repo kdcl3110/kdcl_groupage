@@ -10,6 +10,11 @@ export const authApi = {
     last_name: string
     email: string
     password: string
+    phone: string
+    street: string
+    city: string
+    country: string
+    postal_code?: string
     role?: string
   }) => api.post<{ token: string; user: User }>('/auth/register', data),
   forgotPassword: (email: string) =>

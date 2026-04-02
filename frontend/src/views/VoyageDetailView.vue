@@ -25,6 +25,9 @@ const packages = ref<Package[]>([])
 const loading = ref(true)
 const error = ref('')
 
+const submittedPackages = computed(() => packages.value.filter(p => p.status === 'submitted'))
+const otherPackages     = computed(() => packages.value.filter(p => p.status !== 'submitted'))
+
 const travelId = computed(() => Number(route.params.id))
 
 // ─── Status management ───────────────────────────────────────────────────────
@@ -88,15 +91,18 @@ function packageActions(pkg: Package) {
   if (!isManager.value) return []
   const s = pkg.status
   if (s === 'submitted') {
-    return [{ label: 'Valider', target: 'validate' }]
+    return [
+      { label: 'Accepter', target: 'validate', danger: false },
+      { label: 'Rejeter',  target: 'reject',   danger: true  },
+    ]
   }
   if (s === 'in_travel') {
-    return [{ label: 'Marquer en transit', target: 'in_transit' }]
+    return [{ label: 'Marquer en transit', target: 'in_transit', danger: false }]
   }
   if (s === 'in_transit') {
     return [
-      { label: 'Marquer livré', target: 'delivered' },
-      { label: 'Retourner', target: 'returned' },
+      { label: 'Marquer livré', target: 'delivered', danger: false },
+      { label: 'Retourner',     target: 'returned',  danger: true  },
     ]
   }
   return []
@@ -112,7 +118,11 @@ async function updatePackageStatus(pkg: Package, target: string) {
       if (idx !== -1) packages.value[idx] = data.package
       const { data: t } = await travelsApi.getById(travelId.value)
       travel.value = t
-      toast.success('Colis validé et intégré au voyage.')
+      toast.success('Colis accepté et intégré au voyage.')
+    } else if (target === 'reject') {
+      await packagesApi.reject(pkg.package_id)
+      packages.value = packages.value.filter(p => p.package_id !== pkg.package_id)
+      toast.success('Colis rejeté. Le client a été notifié.')
     } else {
       const { data } = await packagesApi.update(pkg.package_id, { status: target })
       if (idx !== -1) packages.value[idx] = data
@@ -124,6 +134,27 @@ async function updatePackageStatus(pkg: Package, target: string) {
     toast.error(msg)
   } finally {
     pkgStatusLoading.value[pkg.package_id] = false
+  }
+}
+
+// ─── Manager: package detail sheet ──────────────────────────────────────────
+const showPkgDetail   = ref(false)
+const pkgDetail       = ref<Package | null>(null)
+const pkgDetailLoading = ref(false)
+
+async function openPackageDetail(pkg: Package) {
+  if (!isManager.value) return
+  showPkgDetail.value = true
+  pkgDetailLoading.value = true
+  pkgDetail.value = null
+  try {
+    const { data } = await packagesApi.getForManager(pkg.package_id)
+    pkgDetail.value = data
+  } catch (err) {
+    toast.error(apiError(err, 'Impossible de charger le détail du colis.'))
+    showPkgDetail.value = false
+  } finally {
+    pkgDetailLoading.value = false
   }
 }
 
@@ -143,8 +174,8 @@ async function openSubmitSheet() {
   showSubmitSheet.value = true
   pkgsLoading.value = true
   try {
-    const { data } = await packagesApi.getAll()
-    pendingPackages.value = data.filter((p) => p.status === 'pending')
+    const { data: pkgResult } = await packagesApi.getAll({ limit: '1000' })
+    pendingPackages.value = pkgResult.data.filter((p) => p.status === 'pending')
   } catch {
     pendingPackages.value = []
   } finally {
@@ -167,7 +198,6 @@ async function submitPackageToTravel(pkg: Package) {
   }
 }
 
-// ─── Data ────────────────────────────────────────────────────────────────────
 function formatDate(date: string | null) {
   if (!date) return '—'
   return new Date(date).toLocaleDateString('fr-FR', {
@@ -188,10 +218,10 @@ async function fetchData() {
   try {
     const [travelRes, pkgsRes] = await Promise.all([
       travelsApi.getById(travelId.value),
-      packagesApi.getAll({ travel_id: String(travelId.value) }),
+      packagesApi.getAll({ travel_id: String(travelId.value), limit: '1000' }),
     ])
     travel.value = travelRes.data
-    packages.value = pkgsRes.data.filter((p) => p.travel_id === travelId.value)
+    packages.value = pkgsRes.data.data.filter((p) => p.travel_id === travelId.value)
   } catch {
     error.value = 'Impossible de charger les données du voyage.'
   } finally {
@@ -243,12 +273,12 @@ onMounted(fetchData)
           <div class="flex items-start justify-between gap-3">
             <div>
               <div class="flex items-center gap-2 text-app-muted">
-                <span class="text-lg font-bold text-app-primary">{{ travel.origin_country }}</span>
+                <span class="text-lg font-bold text-app-primary">{{ travel.origin.name }}</span>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <line x1="5" y1="12" x2="19" y2="12"/>
                   <polyline points="12 5 19 12 12 19"/>
                 </svg>
-                <span class="text-lg font-bold text-app-primary">{{ travel.destination_country }}</span>
+                <span class="text-lg font-bold text-app-primary">{{ travel.destination.name }}</span>
               </div>
               <p v-if="travel.itinerary" class="text-[13px] text-app-muted mt-1">{{ travel.itinerary }}</p>
             </div>
@@ -337,19 +367,86 @@ onMounted(fetchData)
           Soumettre un colis
         </button>
 
-        <!-- Packages list -->
+        <!-- ── Submitted packages (manager review queue) ── -->
+        <template v-if="isManager && submittedPackages.length > 0">
+          <div class="flex flex-col gap-2.5">
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-bold text-app-primary">À valider</h3>
+              <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[var(--primary)] text-white text-[11px] font-bold">{{ submittedPackages.length }}</span>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <div
+                v-for="pkg in submittedPackages"
+                :key="pkg.package_id"
+                class="rounded-[16px] p-4 flex flex-col gap-3 border border-[var(--primary-25)] bg-[var(--primary-05,var(--primary-10))]"
+              >
+                <!-- Top row -->
+                <div
+                  class="flex items-center justify-between cursor-pointer"
+                  @click="openPackageDetail(pkg)"
+                >
+                  <div class="flex-1 min-w-0">
+                    <span class="text-[12px] font-bold text-[var(--primary)] font-mono tracking-[0.05em]">{{ pkg.tracking_number }}</span>
+                    <p class="text-[13px] font-semibold text-app-primary mt-0.5">{{ pkg.description }}</p>
+                    <div class="flex items-center gap-1.5 text-xs text-app-faint mt-0.5">
+                      <span>{{ pkg.weight }} kg</span><span>·</span>
+                      <span>{{ pkg.volume }} m³</span><span>·</span>
+                      <span>{{ pkg.declared_value }} €</span>
+                    </div>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint shrink-0 ml-2">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </div>
+
+                <!-- Action buttons -->
+                <div class="flex gap-2 pt-1 border-t border-[var(--primary-25)]">
+                  <button
+                    class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-[13px] font-semibold cursor-pointer transition-all border-[1.5px] border-[var(--primary)] text-[var(--primary)] bg-[var(--primary-10)] hover:bg-[var(--primary-20)] active:scale-[0.97] disabled:opacity-40"
+                    :disabled="pkgStatusLoading[pkg.package_id]"
+                    @click.stop="updatePackageStatus(pkg, 'validate')"
+                  >
+                    <svg v-if="pkgStatusLoading[pkg.package_id]" class="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    <svg v-else width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    Accepter
+                  </button>
+                  <button
+                    class="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-[10px] text-[13px] font-semibold cursor-pointer transition-all border-[1.5px] border-[rgba(239,68,68,0.35)] text-red-400 bg-[rgba(239,68,68,0.08)] hover:bg-[rgba(239,68,68,0.14)] active:scale-[0.97] disabled:opacity-40"
+                    :disabled="pkgStatusLoading[pkg.package_id]"
+                    @click.stop="updatePackageStatus(pkg, 'reject')"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    Rejeter
+                  </button>
+                </div>
+
+                <p v-if="pkgStatusError[pkg.package_id]" class="text-[11px] text-red-400 -mt-1">{{ pkgStatusError[pkg.package_id] }}</p>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- ── All other packages ── -->
         <div class="flex flex-col gap-2.5">
-          <h3 class="text-base font-bold text-app-primary">Colis associés ({{ packages.length }})</h3>
+          <h3 class="text-base font-bold text-app-primary">
+            Colis associés ({{ otherPackages.length }})
+          </h3>
 
           <div v-if="packages.length === 0" class="py-6 text-center text-sm text-app-muted">
             Aucun colis pour ce voyage.
           </div>
+          <div v-else-if="otherPackages.length === 0 && submittedPackages.length > 0" class="py-4 text-center text-sm text-app-muted">
+            Aucun colis intégré pour l'instant.
+          </div>
 
           <div v-else class="flex flex-col gap-2">
             <div
-              v-for="pkg in packages"
+              v-for="pkg in otherPackages"
               :key="pkg.package_id"
-              class="glass-subtle rounded-[14px] p-3.5 flex flex-col gap-1.5"
+              class="glass-subtle rounded-[14px] p-3.5 flex flex-col gap-1.5 transition-transform duration-100"
+              :class="isManager ? 'cursor-pointer active:scale-[0.99]' : ''"
+              @click="openPackageDetail(pkg)"
             >
               <div class="flex items-center justify-between">
                 <span class="text-[13px] font-bold text-[var(--primary)] font-mono tracking-[0.05em]">{{ pkg.tracking_number }}</span>
@@ -357,35 +454,28 @@ onMounted(fetchData)
               </div>
               <p class="text-[13px] text-app-muted">{{ pkg.description }}</p>
               <div class="flex items-center gap-1.5 text-xs text-app-faint">
-                <span>{{ pkg.weight }} kg</span>
-                <span>·</span>
-                <span>{{ pkg.volume }} m³</span>
-                <span>·</span>
+                <span>{{ pkg.weight }} kg</span><span>·</span>
+                <span>{{ pkg.volume }} m³</span><span>·</span>
                 <span>{{ pkg.declared_value }} €</span>
               </div>
 
-              <!-- Package actions for manager -->
+              <!-- Package actions for manager (non-submitted) -->
               <template v-if="isManager && packageActions(pkg).length > 0">
                 <div class="border-t border-[var(--glass-border)] mt-1 pt-2 flex items-center gap-2 flex-wrap">
                   <button
                     v-for="action in packageActions(pkg)"
                     :key="action.target"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-semibold border-[1.5px] border-[var(--primary)] text-[var(--primary)] bg-[var(--primary-10)] cursor-pointer transition-all hover:bg-[var(--primary-15)] active:scale-[0.96]"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-semibold border-[1.5px] cursor-pointer transition-all active:scale-[0.96] disabled:opacity-40"
+                    :class="action.danger
+                      ? 'border-[rgba(239,68,68,0.35)] text-red-400 bg-[rgba(239,68,68,0.08)] hover:bg-[rgba(239,68,68,0.14)]'
+                      : 'border-[var(--primary)] text-[var(--primary)] bg-[var(--primary-10)] hover:bg-[var(--primary-15)]'"
                     :disabled="pkgStatusLoading[pkg.package_id]"
-                    @click="updatePackageStatus(pkg, action.target as string)"
+                    @click.stop="updatePackageStatus(pkg, action.target)"
                   >
-                    <svg
-                      v-if="pkgStatusLoading[pkg.package_id]"
-                      class="animate-spin"
-                      width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                    >
-                      <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                    </svg>
+                    <svg v-if="pkgStatusLoading[pkg.package_id]" class="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     {{ action.label }}
                   </button>
-                  <p v-if="pkgStatusError[pkg.package_id]" class="text-[11px] text-red-400 w-full">
-                    {{ pkgStatusError[pkg.package_id] }}
-                  </p>
+                  <p v-if="pkgStatusError[pkg.package_id]" class="text-[11px] text-red-400 w-full">{{ pkgStatusError[pkg.package_id] }}</p>
                 </div>
               </template>
             </div>
@@ -462,6 +552,104 @@ onMounted(fetchData)
               </button>
             </div>
           </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Manager: package detail sheet -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showPkgDetail" class="overlay flex items-end md:items-center justify-center" @click.self="showPkgDetail = false">
+          <Transition name="slide-up">
+            <div v-if="showPkgDetail" class="sheet w-full max-w-[520px] md:rounded-3xl rounded-t-3xl flex flex-col" style="max-height: 92dvh;">
+              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
+
+              <!-- Header -->
+              <div class="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
+                <h2 class="text-[17px] font-bold text-app-primary">Détail du colis</h2>
+                <button class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none" @click="showPkgDetail = false">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+
+              <!-- Loading -->
+              <div v-if="pkgDetailLoading" class="flex-1 flex items-center justify-center py-12">
+                <svg class="animate-spin" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                </svg>
+              </div>
+
+              <!-- Content -->
+              <div v-else-if="pkgDetail" class="flex-1 overflow-y-auto px-5 pb-[calc(20px+env(safe-area-inset-bottom,0px))] flex flex-col gap-4">
+
+                <!-- Tracking + status -->
+                <div class="flex items-center justify-between gap-3 py-1">
+                  <span class="text-sm font-bold text-[var(--primary)] font-mono tracking-wider">{{ pkgDetail.tracking_number }}</span>
+                  <StatusBadge :status="pkgDetail.status" />
+                </div>
+
+                <!-- Images -->
+                <div v-if="pkgDetail.image1" class="flex gap-2 overflow-x-auto">
+                  <img
+                    v-for="(img, i) in [pkgDetail.image1, pkgDetail.image2, pkgDetail.image3, pkgDetail.image4].filter(Boolean)"
+                    :key="i"
+                    :src="img!"
+                    class="h-[100px] w-[100px] object-cover rounded-[12px] shrink-0"
+                  />
+                </div>
+
+                <!-- Package info -->
+                <div class="glass rounded-[14px] p-4 flex flex-col gap-3">
+                  <h3 class="text-[12px] font-semibold text-app-muted uppercase tracking-[0.06em]">Informations colis</h3>
+                  <p class="text-sm text-app-primary">{{ pkgDetail.description }}</p>
+                  <div class="grid grid-cols-3 gap-2">
+                    <div class="flex flex-col gap-0.5">
+                      <span class="text-[10px] text-app-muted uppercase tracking-[0.05em]">Poids</span>
+                      <span class="text-sm font-semibold text-app-primary">{{ pkgDetail.weight }} kg</span>
+                    </div>
+                    <div class="flex flex-col gap-0.5">
+                      <span class="text-[10px] text-app-muted uppercase tracking-[0.05em]">Volume</span>
+                      <span class="text-sm font-semibold text-app-primary">{{ pkgDetail.volume }} m³</span>
+                    </div>
+                    <div class="flex flex-col gap-0.5">
+                      <span class="text-[10px] text-app-muted uppercase tracking-[0.05em]">Valeur déclarée</span>
+                      <span class="text-sm font-semibold text-app-primary">{{ pkgDetail.declared_value }} €</span>
+                    </div>
+                  </div>
+                  <div v-if="pkgDetail.special_instructions" class="text-[12px] text-app-muted border-t border-[var(--glass-border)] pt-2 mt-1">
+                    <span class="font-medium text-app-primary">Instructions : </span>{{ pkgDetail.special_instructions }}
+                  </div>
+                </div>
+
+                <!-- Client info -->
+                <div v-if="pkgDetail.client" class="glass rounded-[14px] p-4 flex flex-col gap-3">
+                  <h3 class="text-[12px] font-semibold text-app-muted uppercase tracking-[0.06em]">Client</h3>
+                  <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-[var(--primary-15)] border border-[var(--primary-25)] flex items-center justify-center text-sm font-bold text-[var(--primary)] shrink-0">
+                      {{ pkgDetail.client.first_name[0] }}{{ pkgDetail.client.last_name[0] }}
+                    </div>
+                    <div>
+                      <p class="text-sm font-bold text-app-primary">{{ pkgDetail.client.first_name }} {{ pkgDetail.client.last_name }}</p>
+                      <p class="text-[12px] text-app-muted">{{ pkgDetail.client.email }}</p>
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-2 border-t border-[var(--glass-border)] pt-2">
+                    <div v-if="pkgDetail.client.phone" class="flex flex-col gap-0.5">
+                      <span class="text-[10px] text-app-muted uppercase tracking-[0.05em]">Téléphone</span>
+                      <a :href="`tel:${pkgDetail.client.phone}`" class="text-sm font-semibold text-[var(--primary)]">{{ pkgDetail.client.phone }}</a>
+                    </div>
+                    <div v-if="pkgDetail.client.city" class="flex flex-col gap-0.5">
+                      <span class="text-[10px] text-app-muted uppercase tracking-[0.05em]">Ville</span>
+                      <span class="text-sm font-semibold text-app-primary">{{ pkgDetail.client.city }}{{ pkgDetail.client.country ? ', ' + pkgDetail.client.country : '' }}</span>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </Transition>
         </div>
       </Transition>
     </Teleport>

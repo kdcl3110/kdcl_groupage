@@ -20,12 +20,17 @@ export async function authenticate(
   next: NextFunction,
 ): Promise<void> {
   const authHeader = req.headers.authorization;
+  // EventSource (SSE) cannot send custom headers — accept token via query param as fallback
+  const queryToken = req.query.token as string | undefined;
 
-  if (!authHeader?.startsWith('Bearer ')) {
+  let token: string | undefined;
+  if (authHeader?.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (queryToken) {
+    token = queryToken;
+  } else {
     return next(new AppError(401, 'Authentication required'));
   }
-
-  const token = authHeader.split(' ')[1];
 
   try {
     const payload = jwt.verify(token, env.jwt.secret) as JwtPayload;

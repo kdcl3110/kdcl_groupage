@@ -11,6 +11,8 @@ import authRouter from './modules/auth/auth.router';
 import packageRouter from './modules/package/package.router';
 import travelRouter from './modules/travel/travel.router';
 import recipientRouter from './modules/recipient/recipient.router';
+import countryRouter from './modules/country/country.router';
+import notificationRouter from './modules/notification/notification.router';
 
 function createApp(): Application {
   const app = express();
@@ -64,6 +66,8 @@ function createApp(): Application {
   app.use('/api/v1/packages', packageRouter);
   app.use('/api/v1/travels', travelRouter);
   app.use('/api/v1/recipients', recipientRouter);
+  app.use('/api/v1/countries', countryRouter);
+  app.use('/api/v1/notifications', notificationRouter);
 
   // Error handling
   app.use(notFound);

@@ -1,3 +1,9 @@
+export interface Country {
+  country_id: number
+  name: string
+  is_active: boolean
+}
+
 export interface User {
   user_id: number
   first_name: string
@@ -15,8 +21,10 @@ export interface Travel {
   travel_id: number
   created_by: number
   transport_type: 'ship' | 'plane'
-  origin_country: string
-  destination_country: string
+  origin_country_id: number
+  destination_country_id: number
+  origin: { country_id: number; name: string }
+  destination: { country_id: number; name: string }
   itinerary: string | null
   status: 'open' | 'full' | 'in_transit' | 'delivered' | 'cancelled'
   container: string | null
@@ -36,10 +44,21 @@ export interface Travel {
   remaining_volume: number
 }
 
+export interface PackageClient {
+  user_id: number
+  first_name: string
+  last_name: string
+  email: string
+  phone: string
+  city: string
+  country: string
+}
+
 export interface Package {
   package_id: number
   client_id: number
   travel_id: number | null
+  client?: PackageClient
   recipient_id: number
   tracking_number: string
   description: string

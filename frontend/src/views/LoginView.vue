@@ -3,17 +3,20 @@ import { ref, reactive } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { authApi } from '@/api/auth'
+import { useToastStore } from '@/stores/toast'
 
 const router = useRouter()
 const auth = useAuthStore()
+const toast = useToastStore()
 
 // panel: 'login' | 'register' | 'forgot'
 const panel = ref<'login' | 'register' | 'forgot'>('login')
 
-// ── Login ────────────────────────────────────────────────────────────────────
+// Login
 const form = reactive({ email: '', password: '' })
 const error = ref('')
 const loading = ref(false)
+const showLoginPassword = ref(false)
 
 async function handleLogin() {
   error.value = ''
@@ -28,19 +31,21 @@ async function handleLogin() {
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } } }
     error.value = e.response?.data?.message ?? 'Email ou mot de passe incorrect.'
+    toast.error(error.value)
   } finally {
     loading.value = false
   }
 }
 
-// ── Register ─────────────────────────────────────────────────────────────────
-const registerForm = reactive({ first_name: '', last_name: '', email: '', password: '' })
+// Register
+const registerForm = reactive({ first_name: '', last_name: '', email: '', phone: '', street: '', city: '', country: '', postal_code: '', password: '' })
 const registerError = ref('')
 const registerLoading = ref(false)
+const showRegisterPassword = ref(false)
 
 async function handleRegister() {
   registerError.value = ''
-  if (!registerForm.first_name || !registerForm.last_name || !registerForm.email || !registerForm.password) {
+  if (!registerForm.first_name || !registerForm.last_name || !registerForm.email || !registerForm.phone || !registerForm.street || !registerForm.city || !registerForm.country || !registerForm.password) {
     registerError.value = 'Veuillez remplir tous les champs.'
     return
   }
@@ -54,12 +59,13 @@ async function handleRegister() {
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } } }
     registerError.value = e.response?.data?.message ?? 'Erreur lors de la création du compte.'
+    toast.error(registerError.value)
   } finally {
     registerLoading.value = false
   }
 }
 
-// ── Forgot password ──────────────────────────────────────────────────────────
+// Forgot password
 const forgotEmail = ref('')
 const forgotError = ref('')
 const forgotLoading = ref(false)
@@ -78,6 +84,7 @@ async function handleForgot() {
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } } }
     forgotError.value = e.response?.data?.message ?? 'Erreur lors de l\'envoi de l\'email.'
+    toast.error(forgotError.value)
   } finally {
     forgotLoading.value = false
   }
@@ -136,7 +143,17 @@ function goToLogin() {
                 Mot de passe oublié ?
               </button>
             </div>
-            <input v-model="form.password" type="password" class="input-field" placeholder="••••••••" autocomplete="current-password" :disabled="loading" />
+            <div class="relative">
+              <input v-model="form.password" :type="showLoginPassword ? 'text' : 'password'" class="input-field w-full" placeholder="••••••••" autocomplete="current-password" :disabled="loading" style="padding-right: 44px;" />
+              <button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-app-faint hover:text-app-muted transition-colors cursor-pointer bg-transparent border-none p-1" @click="showLoginPassword = !showLoginPassword" tabindex="-1">
+                <svg v-if="showLoginPassword" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
           <Transition name="fade">
@@ -196,9 +213,45 @@ function goToLogin() {
             <input v-model="registerForm.email" type="email" class="input-field" placeholder="votre@email.com" autocomplete="email" :disabled="registerLoading" />
           </div>
 
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Téléphone</label>
+            <input v-model="registerForm.phone" type="tel" class="input-field" placeholder="+32 470 00 00 00" autocomplete="tel" :disabled="registerLoading" />
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Rue et numéro</label>
+            <input v-model="registerForm.street" type="text" class="input-field" placeholder="Rue de la Paix 12" autocomplete="street-address" :disabled="registerLoading" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Ville</label>
+              <input v-model="registerForm.city" type="text" class="input-field" placeholder="Bruxelles" autocomplete="address-level2" :disabled="registerLoading" />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Code postal</label>
+              <input v-model="registerForm.postal_code" type="text" class="input-field" placeholder="1000" autocomplete="postal-code" :disabled="registerLoading" />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Pays</label>
+            <input v-model="registerForm.country" type="text" class="input-field" placeholder="Belgique" autocomplete="country-name" :disabled="registerLoading" />
+          </div>
+
           <div class="flex flex-col gap-2">
             <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Mot de passe</label>
-            <input v-model="registerForm.password" type="password" class="input-field" placeholder="Minimum 8 caractères" autocomplete="new-password" :disabled="registerLoading" />
+            <div class="relative">
+              <input v-model="registerForm.password" :type="showRegisterPassword ? 'text' : 'password'" class="input-field w-full" placeholder="Minimum 8 caractères" autocomplete="new-password" :disabled="registerLoading" style="padding-right: 44px;" />
+              <button type="button" class="absolute right-3 top-1/2 -translate-y-1/2 text-app-faint hover:text-app-muted transition-colors cursor-pointer bg-transparent border-none p-1" @click="showRegisterPassword = !showRegisterPassword" tabindex="-1">
+                <svg v-if="showRegisterPassword" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+                </svg>
+              </button>
+            </div>
           </div>
 
           <Transition name="fade">

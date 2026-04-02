@@ -70,8 +70,12 @@ export async function deletePackage(req: AuthRequest, res: Response, next: NextF
 
 export async function getMyPackages(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const packages = await service.getMyPackages(req.user!.user_id);
-    res.status(200).json(packages);
+    const caller     = { userId: req.user!.user_id, role: req.user!.role };
+    const filters    = { travel_id: req.query.travel_id ? Number(req.query.travel_id) : undefined };
+    const limit      = req.query.limit  ? Math.min(Number(req.query.limit),  200) : 10;
+    const offset     = req.query.offset ? Number(req.query.offset) : 0;
+    const result     = await service.getPackages(caller, filters, { limit, offset });
+    res.status(200).json(result);
   } catch (error) {
     next(error);
   }
@@ -86,10 +90,30 @@ export async function getPackageById(req: AuthRequest, res: Response, next: Next
   }
 }
 
+export async function getPackageForManager(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const caller = { userId: req.user!.user_id, role: req.user!.role };
+    const pkg = await service.getByIdForManager(Number(req.params.id), caller);
+    res.status(200).json(pkg);
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function validatePackage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const result = await service.validatePackage(Number(req.params.id));
     res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function rejectPackage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const caller = { userId: req.user!.user_id, role: req.user!.role };
+    const pkg = await service.rejectPackage(Number(req.params.id), caller);
+    res.status(200).json(pkg);
   } catch (error) {
     next(error);
   }

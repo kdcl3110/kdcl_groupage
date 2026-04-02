@@ -17,6 +17,10 @@ const isClient = computed(() => auth.user?.role === 'client')
 // ─── List state ────────────────────────────────────────────────────────────
 const packages = ref<Package[]>([])
 const loading = ref(true)
+const loadingMore = ref(false)
+const hasMore = ref(false)
+const offset = ref(0)
+const PAGE_SIZE = 10
 const error = ref('')
 
 // ─── Status filters (client only) ───────────────────────────────────────────
@@ -55,6 +59,47 @@ const form = reactive({
 const recipients = ref<Recipient[]>([])
 const selectedRecipient = ref<Recipient | null>(null)
 const images = ref<(File | null)[]>([null, null, null, null])
+
+// New recipient inline form
+const showNewRecipient = ref(false)
+const newRecipientLoading = ref(false)
+const newRecipientError = ref('')
+const newRecipient = reactive({ first_name: '', last_name: '', phone: '', email: '', address: '', city: '', country: '' })
+
+function openNewRecipient() {
+  newRecipient.first_name = ''; newRecipient.last_name = ''; newRecipient.phone = ''
+  newRecipient.email = ''; newRecipient.address = ''; newRecipient.city = ''; newRecipient.country = ''
+  newRecipientError.value = ''
+  showNewRecipient.value = true
+}
+
+async function saveNewRecipient() {
+  newRecipientError.value = ''
+  if (!newRecipient.first_name || !newRecipient.last_name || !newRecipient.phone || !newRecipient.address || !newRecipient.city || !newRecipient.country) {
+    newRecipientError.value = 'Veuillez remplir tous les champs obligatoires.'
+    return
+  }
+  newRecipientLoading.value = true
+  try {
+    const { data } = await recipientsApi.create({
+      first_name: newRecipient.first_name,
+      last_name: newRecipient.last_name,
+      phone: newRecipient.phone,
+      email: newRecipient.email || null,
+      address: newRecipient.address,
+      city: newRecipient.city,
+      country: newRecipient.country,
+    })
+    recipients.value.push(data)
+    selectedRecipient.value = data
+    showNewRecipient.value = false
+  } catch (err: unknown) {
+    const e = err as { response?: { data?: { message?: string } } }
+    newRecipientError.value = e.response?.data?.message ?? 'Erreur lors de la création du destinataire.'
+  } finally {
+    newRecipientLoading.value = false
+  }
+}
 const previews = computed(() =>
   images.value.map((f) => (f ? URL.createObjectURL(f) : null)),
 )
@@ -80,16 +125,28 @@ function pkgDisplayStatus(pkg: Package) {
 }
 
 // ─── Data fetch ─────────────────────────────────────────────────────────────
-async function fetchPackages() {
-  loading.value = true
+async function fetchPackages(reset = true) {
+  if (reset) {
+    offset.value = 0
+    packages.value = []
+    loading.value = true
+  } else {
+    loadingMore.value = true
+  }
   error.value = ''
   try {
-    const { data } = await packagesApi.getAll()
-    packages.value = data
+    const { data: result } = await packagesApi.getAll({
+      limit: String(PAGE_SIZE),
+      offset: String(offset.value),
+    })
+    packages.value = reset ? result.data : [...packages.value, ...result.data]
+    hasMore.value = result.hasMore
+    offset.value += result.data.length
   } catch {
     error.value = 'Impossible de charger les colis.'
   } finally {
     loading.value = false
+    loadingMore.value = false
   }
 }
 
@@ -97,10 +154,10 @@ async function fetchFormData() {
   try {
     const [recRes, travRes] = await Promise.all([
       recipientsApi.getAll(),
-      travelsApi.getAll({ status: 'open' }),
+      travelsApi.getAll({ status: 'open', limit: '200' }),
     ])
     recipients.value = recRes.data
-    travels.value = travRes.data
+    travels.value = travRes.data.data
   } catch {
     // non-blocking
   }
@@ -143,6 +200,8 @@ function resetForm() {
   form.declared_value = ''
   form.special_instructions = ''
   selectedRecipient.value = null
+  showNewRecipient.value = false
+  newRecipientError.value = ''
   images.value = [null, null, null, null]
   selectedTravel.value = null
   noTravel.value = false
@@ -299,7 +358,7 @@ onMounted(fetchPackages)
         <span class="text-5xl opacity-40">📦</span>
         <p class="font-semibold text-app-primary">Aucun colis</p>
         <p class="text-sm">
-          {{ activeFilter === 'all' ? 'Ajoutez votre premier colis en cliquant sur le bouton +.' : 'Aucun colis avec ce statut.' }}
+          {{ activeFilter === 'all' ? 'Ajoutez votre premier colis en cliquant sur le bouton +.' : 'Aucun colis avec ce statut pour le moment.' }}
         </p>
       </div>
 
@@ -368,6 +427,20 @@ onMounted(fetchPackages)
             </div>
           </div>
         </div>
+      </div>
+
+      <!-- Voir plus -->
+      <div v-if="(hasMore || loadingMore) && !loading" class="flex justify-center pb-2">
+        <button
+          class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer disabled:opacity-50"
+          :disabled="loadingMore"
+          @click="fetchPackages(false)"
+        >
+          <svg v-if="loadingMore" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+          {{ loadingMore ? 'Chargement...' : 'Voir plus' }}
+        </button>
       </div>
     </div>
 
@@ -483,32 +556,88 @@ onMounted(fetchPackages)
                 <div v-else-if="step === 2" class="flex flex-col gap-4">
                   <!-- Recipient -->
                   <div class="flex flex-col gap-2">
-                    <label class="field-label">Destinataire *</label>
-                    <div v-if="recipients.length === 0" class="text-sm text-app-muted text-center py-4">Aucun destinataire disponible.</div>
-                    <div v-else class="flex flex-col gap-2 max-h-[200px] overflow-y-auto scrollbar-hide">
-                      <div
-                        v-for="r in recipients"
-                        :key="r.recipient_id"
-                        class="flex items-center gap-3 px-3.5 py-3 rounded-[14px] cursor-pointer transition-all border"
-                        :class="selectedRecipient?.recipient_id === r.recipient_id
-                          ? 'bg-[var(--primary-15)] border-[var(--primary)]'
-                          : 'glass-subtle border-transparent'"
-                        @click="selectedRecipient = r"
+                    <div class="flex items-center justify-between">
+                      <label class="field-label">Destinataire *</label>
+                      <button
+                        v-if="!showNewRecipient"
+                        type="button"
+                        class="flex items-center gap-1 text-xs font-semibold text-[var(--primary)] cursor-pointer bg-transparent border-none p-0 transition-opacity hover:opacity-70"
+                        @click="openNewRecipient"
                       >
-                        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary-30)] to-[var(--primary-15)] border border-[var(--primary-30)] flex items-center justify-center text-sm font-bold text-[var(--primary)] shrink-0">
-                          {{ r.first_name[0] }}{{ r.last_name[0] }}
-                        </div>
-                        <div class="flex-1 min-w-0">
-                          <p class="text-sm font-semibold text-app-primary truncate">{{ r.first_name }} {{ r.last_name }}</p>
-                          <p class="text-xs text-app-muted">{{ r.city }}, {{ r.country }}</p>
-                        </div>
-                        <div v-if="selectedRecipient?.recipient_id === r.recipient_id" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"/>
-                          </svg>
-                        </div>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                        </svg>
+                        Nouveau
+                      </button>
+                    </div>
+
+                    <!-- Inline creation form -->
+                    <div v-if="showNewRecipient" class="flex flex-col gap-2.5 p-3.5 glass-subtle rounded-[14px] border border-[var(--primary-30)]">
+                      <div class="flex items-center justify-between mb-0.5">
+                        <p class="text-sm font-semibold text-app-primary">Nouveau destinataire</p>
+                        <button type="button" class="w-6 h-6 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none text-base leading-none" @click="showNewRecipient = false">×</button>
+                      </div>
+                      <div class="grid grid-cols-2 gap-2">
+                        <input v-model="newRecipient.first_name" type="text" class="input-field" placeholder="Prénom *" :disabled="newRecipientLoading" />
+                        <input v-model="newRecipient.last_name" type="text" class="input-field" placeholder="Nom *" :disabled="newRecipientLoading" />
+                      </div>
+                      <input v-model="newRecipient.phone" type="tel" class="input-field" placeholder="Téléphone *" :disabled="newRecipientLoading" />
+                      <input v-model="newRecipient.email" type="email" class="input-field" placeholder="Email (optionnel)" :disabled="newRecipientLoading" />
+                      <input v-model="newRecipient.address" type="text" class="input-field" placeholder="Adresse *" :disabled="newRecipientLoading" />
+                      <div class="grid grid-cols-2 gap-2">
+                        <input v-model="newRecipient.city" type="text" class="input-field" placeholder="Ville *" :disabled="newRecipientLoading" />
+                        <input v-model="newRecipient.country" type="text" class="input-field" placeholder="Pays *" :disabled="newRecipientLoading" />
+                      </div>
+                      <div v-if="newRecipientError" class="text-[12px] text-red-400 px-1">{{ newRecipientError }}</div>
+                      <div class="flex gap-2 pt-1">
+                        <button
+                          type="button"
+                          class="flex-1 py-2 rounded-[10px] text-sm font-semibold text-app-muted border border-[var(--glass-border)] bg-transparent cursor-pointer transition-colors hover:text-app-primary"
+                          @click="showNewRecipient = false"
+                          :disabled="newRecipientLoading"
+                        >Annuler</button>
+                        <button
+                          type="button"
+                          class="flex-1 btn-primary py-2 text-sm flex items-center justify-center gap-2"
+                          @click="saveNewRecipient"
+                          :disabled="newRecipientLoading"
+                        >
+                          <span v-if="newRecipientLoading" class="btn-spinner" />
+                          <span v-else>Créer</span>
+                        </button>
                       </div>
                     </div>
+
+                    <!-- Recipient list -->
+                    <template v-else>
+                      <div v-if="recipients.length === 0" class="text-sm text-app-muted text-center py-4">
+                        Aucun destinataire. Créez-en un avec le bouton <strong>Nouveau</strong>.
+                      </div>
+                      <div v-else class="flex flex-col gap-2 max-h-[200px] overflow-y-auto scrollbar-hide">
+                        <div
+                          v-for="r in recipients"
+                          :key="r.recipient_id"
+                          class="flex items-center gap-3 px-3.5 py-3 rounded-[14px] cursor-pointer transition-all border"
+                          :class="selectedRecipient?.recipient_id === r.recipient_id
+                            ? 'bg-[var(--primary-15)] border-[var(--primary)]'
+                            : 'glass-subtle border-transparent'"
+                          @click="selectedRecipient = r"
+                        >
+                          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary-30)] to-[var(--primary-15)] border border-[var(--primary-30)] flex items-center justify-center text-sm font-bold text-[var(--primary)] shrink-0">
+                            {{ r.first_name[0] }}{{ r.last_name[0] }}
+                          </div>
+                          <div class="flex-1 min-w-0">
+                            <p class="text-sm font-semibold text-app-primary truncate">{{ r.first_name }} {{ r.last_name }}</p>
+                            <p class="text-xs text-app-muted">{{ r.city }}, {{ r.country }}</p>
+                          </div>
+                          <div v-if="selectedRecipient?.recipient_id === r.recipient_id" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                              <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                          </div>
+                        </div>
+                      </div>
+                    </template>
                   </div>
 
                   <!-- Images -->
@@ -635,7 +764,7 @@ onMounted(fetchPackages)
                           </svg>
                         </div>
                         <div>
-                          <p class="text-sm font-bold text-app-primary">{{ t.origin_country }} → {{ t.destination_country }}</p>
+                          <p class="text-sm font-bold text-app-primary">{{ t.origin.name }} → {{ t.destination.name }}</p>
                           <p class="text-xs text-app-muted">{{ t.transport_type === 'ship' ? 'Maritime' : 'Aérien' }}</p>
                         </div>
                       </div>
@@ -708,7 +837,7 @@ onMounted(fetchPackages)
                   <div class="glass-subtle rounded-[16px] p-4 flex flex-col gap-1">
                     <p class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.05em]">Voyage</p>
                     <template v-if="selectedTravel">
-                      <p class="text-sm font-semibold text-app-primary">{{ selectedTravel.origin_country }} → {{ selectedTravel.destination_country }}</p>
+                      <p class="text-sm font-semibold text-app-primary">{{ selectedTravel.origin.name }} → {{ selectedTravel.destination.name }}</p>
                       <p class="text-xs text-app-muted">{{ selectedTravel.transport_type === 'ship' ? 'Maritime' : 'Aérien' }} · Départ {{ formatDateShort(selectedTravel.departure_date) }}</p>
                     </template>
                     <p v-else class="text-sm text-app-muted">Aucun voyage — colis en attente</p>

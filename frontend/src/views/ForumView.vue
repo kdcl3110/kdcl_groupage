@@ -32,21 +32,21 @@ async function fetchTravels() {
   try {
     if (isClient.value) {
       // Clients only see forums of travels they participate in
-      const { data: packages } = await packagesApi.getAll()
+      const { data: pkgResult } = await packagesApi.getAll({ limit: '1000' })
       const travelIds = new Set(
-        packages
+        pkgResult.data
           .filter((p) => ['submitted', 'in_travel', 'in_transit', 'delivered'].includes(p.status) && p.travel_id)
           .map((p) => p.travel_id!),
       )
       if (travelIds.size > 0) {
-        const { data: allTravels } = await travelsApi.getAll()
-        travels.value = allTravels.filter((t) => travelIds.has(t.travel_id))
+        const { data: travResult } = await travelsApi.getAll({ limit: '1000' })
+        travels.value = travResult.data.filter((t) => travelIds.has(t.travel_id))
       } else {
         travels.value = []
       }
     } else {
-      const { data } = await travelsApi.getAll()
-      travels.value = data
+      const { data: travResult } = await travelsApi.getAll({ limit: '1000' })
+      travels.value = travResult.data
     }
   } catch {
     travels.value = []
@@ -121,7 +121,7 @@ onMounted(fetchTravels)
           <div class="flex-1 min-w-0">
             <div class="flex items-center justify-between gap-2">
               <p class="text-[15px] font-semibold text-app-primary truncate">
-                {{ t.origin_country }} → {{ t.destination_country }}
+                {{ t.origin.name }} → {{ t.destination.name }}
               </p>
               <span v-if="t.departure_date" class="text-[11px] text-app-faint shrink-0">
                 {{ formatDate(t.departure_date) }}

@@ -132,7 +132,7 @@ onMounted(async () => {
           </div>
           <div class="flex-1 min-w-0">
             <p class="text-[15px] font-bold text-app-primary leading-tight truncate">
-              {{ travel.origin_country }} → {{ travel.destination_country }}
+              {{ travel.origin.name }} → {{ travel.destination.name }}
             </p>
             <p class="text-[12px] text-app-muted truncate">
               {{ travel.itinerary || (travel.transport_type === 'ship' ? 'Maritime' : 'Aérien') }}

@@ -21,6 +21,7 @@ const allTabs = [
     name: 'colis',
     path: '/colis',
     label: 'Colis',
+    roles: ['client'],
     icon: `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
       <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>
       <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
@@ -67,8 +68,13 @@ const tabs = computed(() => {
 })
 
 // Only show the tab bar on top-level pages, not on detail/sub-pages
-const mainPaths = ['/voyages', '/colis', '/destinataires', '/forum', '/profil']
-const isMainPage = computed(() => mainPaths.includes(route.path))
+const mainPaths = computed(() => {
+  const role = auth.user?.role
+  const paths = ['/voyages', '/destinataires', '/forum', '/profil']
+  if (role === 'client') paths.push('/colis')
+  return paths
+})
+const isMainPage = computed(() => mainPaths.value.includes(route.path))
 
 function isActive(tab: (typeof allTabs)[0]) {
   return route.path === tab.path || route.path.startsWith(tab.path + '/')

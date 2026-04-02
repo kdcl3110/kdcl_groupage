@@ -136,8 +136,8 @@ async function openVoyageSheet() {
   showVoyageSheet.value = true
   voyagesLoading.value = true
   try {
-    const { data } = await travelsApi.getAll({ status: 'open' })
-    availableVoyages.value = data
+    const { data: result } = await travelsApi.getAll({ status: 'open', limit: '200' })
+    availableVoyages.value = result.data
   } catch {
     availableVoyages.value = []
   } finally {
@@ -408,12 +408,12 @@ onMounted(fetchData)
                 </div>
                 <div>
                   <div class="flex items-center gap-1.5 text-[15px] font-semibold text-app-primary">
-                    <span>{{ travel.origin_country }}</span>
+                    <span>{{ travel.origin.name }}</span>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint">
                       <line x1="5" y1="12" x2="19" y2="12"/>
                       <polyline points="12 5 19 12 12 19"/>
                     </svg>
-                    <span>{{ travel.destination_country }}</span>
+                    <span>{{ travel.destination.name }}</span>
                   </div>
                   <p class="text-[12px] text-app-muted">{{ transportLabel }}</p>
                 </div>
@@ -538,7 +538,7 @@ onMounted(fetchData)
                     </div>
                     <!-- Info -->
                     <div class="flex-1 min-w-0">
-                      <p class="text-[14px] font-bold text-app-primary truncate">{{ v.origin_country }} → {{ v.destination_country }}</p>
+                      <p class="text-[14px] font-bold text-app-primary truncate">{{ v.origin.name }} → {{ v.destination.name }}</p>
                       <p class="text-[12px] text-app-muted">{{ formatDeparture(v.departure_date) }} · {{ v.packages_count }} colis</p>
                     </div>
                     <!-- Spinner or arrow -->

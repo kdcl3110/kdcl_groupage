@@ -15,10 +15,12 @@ export async function createTravel(req: AuthRequest, res: Response, next: NextFu
 
 export async function getAllTravels(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { status, transport_type, origin_country, destination_country } = req.query as Record<string, string>;
-    const caller = { userId: req.user!.user_id, role: req.user!.role };
-    const travels = await service.getAll(caller, { status, transport_type, origin_country, destination_country });
-    res.status(200).json(travels);
+    const { status, transport_type, origin_country_id, destination_country_id } = req.query as Record<string, string>;
+    const caller  = { userId: req.user!.user_id, role: req.user!.role };
+    const limit   = req.query.limit  ? Math.min(Number(req.query.limit),  200) : 10;
+    const offset  = req.query.offset ? Number(req.query.offset) : 0;
+    const result  = await service.getAll(caller, { status, transport_type, origin_country_id, destination_country_id }, { limit, offset });
+    res.status(200).json(result);
   } catch (error) {
     next(error);
   }

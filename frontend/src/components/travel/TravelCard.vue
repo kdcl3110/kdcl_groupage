@@ -76,12 +76,12 @@ function goToForum(e: Event) {
 
         <!-- Route -->
         <div class="flex-1 flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span class="text-[15px] font-bold text-app-primary truncate">{{ travel.origin_country }}</span>
+          <span class="text-[15px] font-bold text-app-primary truncate">{{ travel.origin.name }}</span>
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint shrink-0">
             <line x1="5" y1="12" x2="19" y2="12"/>
             <polyline points="12 5 19 12 12 19"/>
           </svg>
-          <span class="text-[15px] font-bold text-app-primary truncate">{{ travel.destination_country }}</span>
+          <span class="text-[15px] font-bold text-app-primary truncate">{{ travel.destination.name }}</span>
         </div>
 
         <StatusBadge :status="travel.status" />

@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TravelCard from '@/components/travel/TravelCard.vue'
+import SearchableSelect from '@/components/common/SearchableSelect.vue'
 import { travelsApi } from '@/api/travels'
 import { packagesApi } from '@/api/packages'
+import { countriesApi } from '@/api/countries'
 import { useAuthStore } from '@/stores/auth'
-import type { Travel, Package } from '@/types'
+import type { Travel, Package, Country } from '@/types'
 
 const auth = useAuthStore()
 const isManager = computed(() => auth.user?.role === 'freight_forwarder' || auth.user?.role === 'admin')
@@ -13,9 +15,13 @@ const isClient = computed(() => auth.user?.role === 'client')
 
 const travels = ref<Travel[]>([])
 const loading = ref(true)
+const loadingMore = ref(false)
+const hasMore = ref(false)
+const offset = ref(0)
+const PAGE_SIZE = 10
 const error = ref('')
 
-// ── Manager filters (by travel status) ──────────────────────────────────────
+// Manager filters (by travel status) 
 const activeFilter = ref('all')
 const filters = [
   { key: 'all',       label: 'Tous' },
@@ -26,7 +32,7 @@ const filters = [
   { key: 'cancelled', label: 'Annulé' },
 ]
 
-// ── Client filters (by participation) ───────────────────────────────────────
+// Client filters (by participation) 
 const clientFilter = ref('all')
 const clientFilters = [
   { key: 'all',       label: 'Tous' },
@@ -54,10 +60,10 @@ const myTravelIds = computed(() => {
 
 const filtered = computed(() => {
   if (isManager.value) {
-    if (activeFilter.value === 'all') return travels.value
-    return travels.value.filter((t) => t.status === activeFilter.value)
+    // Le filtre de statut est géré côté serveur
+    return travels.value
   }
-  // client
+  // client — filtre client-side sur les voyages chargés
   const ids = myTravelIds.value
   if (clientFilter.value === 'all')       return travels.value
   if (clientFilter.value === 'my')        return travels.value.filter(t => ids.all.has(t.travel_id))
@@ -67,33 +73,68 @@ const filtered = computed(() => {
   return travels.value
 })
 
-async function fetchTravels() {
-  loading.value = true
+async function fetchTravels(reset = true) {
+  if (reset) {
+    offset.value = 0
+    travels.value = []
+    loading.value = true
+  } else {
+    loadingMore.value = true
+  }
   error.value = ''
   try {
-    const [travRes] = await Promise.all([travelsApi.getAll()])
-    travels.value = travRes.data
+    const params: Record<string, string> = {
+      limit: String(PAGE_SIZE),
+      offset: String(offset.value),
+    }
+    // Pour le manager, on passe le filtre de statut côté serveur
+    if (isManager.value && activeFilter.value !== 'all') {
+      params.status = activeFilter.value
+    }
+
+    const travRes = await travelsApi.getAll(params)
+    const { data: newTravels, hasMore: more } = travRes.data
+    travels.value = reset ? newTravels : [...travels.value, ...newTravels]
+    hasMore.value = more
+    offset.value += newTravels.length
+
     if (isClient.value) {
-      const pkgRes = await packagesApi.getAll()
-      myPackages.value = pkgRes.data
+      const pkgRes = await packagesApi.getAll({ limit: '1000' })
+      myPackages.value = pkgRes.data.data
     }
   } catch {
     error.value = 'Impossible de charger les voyages. Vérifiez votre connexion.'
   } finally {
     loading.value = false
+    loadingMore.value = false
   }
 }
 
-// ─── Creation sheet ──────────────────────────────────────────────────────────
+// Quand le manager change le filtre de statut, on recharge depuis le début
+watch(activeFilter, () => { if (isManager.value) fetchTravels(true) })
+
+//  Countries 
+const countries = ref<Country[]>([])
+async function fetchCountries() {
+  try {
+    const { data } = await countriesApi.getAll()
+    countries.value = data.filter(c => c.is_active)
+  } catch {
+    // non-blocking
+  }
+}
+
+// Creation sheet 
 const showSheet = ref(false)
 const formLoading = ref(false)
 const formError = ref('')
 const showAdvanced = ref(false)
+const todayStr = new Date().toISOString().split('T')[0]
 
 const form = reactive({
   transport_type: 'ship' as 'ship' | 'plane',
-  origin_country: '',
-  destination_country: '',
+  origin_country_id: '',
+  destination_country_id: '',
   departure_date: '',
   estimated_arrival_date: '',
   max_weight: '',
@@ -106,13 +147,14 @@ const form = reactive({
 
 function openSheet() {
   resetForm()
+  fetchCountries()
   showSheet.value = true
 }
 
 function resetForm() {
   form.transport_type = 'ship'
-  form.origin_country = ''
-  form.destination_country = ''
+  form.origin_country_id = ''
+  form.destination_country_id = ''
   form.departure_date = ''
   form.estimated_arrival_date = ''
   form.max_weight = ''
@@ -128,9 +170,26 @@ function resetForm() {
 
 async function handleCreate() {
   formError.value = ''
-  if (!form.origin_country.trim() || !form.destination_country.trim()) {
+  if (!form.origin_country_id || !form.destination_country_id) {
     formError.value = 'Les pays d\'origine et de destination sont obligatoires.'
     return
+  }
+  if (form.origin_country_id === form.destination_country_id) {
+    formError.value = 'Le pays d\'origine et le pays de destination doivent être différents.'
+    return
+  }
+  if (form.departure_date) {
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    if (new Date(form.departure_date) < today) {
+      formError.value = 'La date de départ ne peut pas être antérieure à aujourd\'hui.'
+      return
+    }
+  }
+  if (form.departure_date && form.estimated_arrival_date) {
+    if (new Date(form.estimated_arrival_date) <= new Date(form.departure_date)) {
+      formError.value = 'La date d\'arrivée estimée doit être postérieure à la date de départ.'
+      return
+    }
   }
   if (!form.max_weight || parseFloat(form.max_weight) <= 0) {
     formError.value = 'Le poids maximum doit être supérieur à 0.'
@@ -145,8 +204,8 @@ async function handleCreate() {
   try {
     const payload: Record<string, unknown> = {
       transport_type: form.transport_type,
-      origin_country: form.origin_country.trim(),
-      destination_country: form.destination_country.trim(),
+      origin_country_id: parseInt(form.origin_country_id),
+      destination_country_id: parseInt(form.destination_country_id),
       max_weight: parseFloat(form.max_weight),
       max_volume: parseFloat(form.max_volume),
       min_load_percentage: parseInt(form.min_load_percentage, 10),
@@ -264,6 +323,20 @@ onMounted(fetchTravels)
           :travel="travel"
         />
       </div>
+
+      <!-- Voir plus -->
+      <div v-if="(hasMore || loadingMore) && !loading" class="flex justify-center pb-2">
+        <button
+          class="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-[var(--primary)] border-[1.5px] border-[var(--primary)] bg-transparent transition-colors hover:bg-[var(--primary-10)] cursor-pointer disabled:opacity-50"
+          :disabled="loadingMore"
+          @click="fetchTravels(false)"
+        >
+          <svg v-if="loadingMore" class="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+          </svg>
+          {{ loadingMore ? 'Chargement...' : 'Voir plus' }}
+        </button>
+      </div>
     </div>
 
     <!-- FAB -->
@@ -345,20 +418,18 @@ onMounted(fetchTravels)
                 <div class="grid grid-cols-2 gap-3">
                   <div class="flex flex-col gap-2">
                     <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Origine</label>
-                    <input
-                      v-model="form.origin_country"
-                      type="text"
-                      class="input-field"
-                      placeholder="Ex: France"
+                    <SearchableSelect
+                      v-model="form.origin_country_id"
+                      :options="countries.map(c => ({ value: String(c.country_id), label: c.name }))"
+                      placeholder="Rechercher…"
                     />
                   </div>
                   <div class="flex flex-col gap-2">
                     <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Destination</label>
-                    <input
-                      v-model="form.destination_country"
-                      type="text"
-                      class="input-field"
-                      placeholder="Ex: Sénégal"
+                    <SearchableSelect
+                      v-model="form.destination_country_id"
+                      :options="countries.map(c => ({ value: String(c.country_id), label: c.name }))"
+                      placeholder="Rechercher…"
                     />
                   </div>
                 </div>
@@ -371,6 +442,7 @@ onMounted(fetchTravels)
                       v-model="form.departure_date"
                       type="date"
                       class="input-field"
+                      :min="todayStr"
                     />
                   </div>
                   <div class="flex flex-col gap-2">
@@ -379,6 +451,7 @@ onMounted(fetchTravels)
                       v-model="form.estimated_arrival_date"
                       type="date"
                       class="input-field"
+                      :min="form.departure_date || todayStr"
                     />
                   </div>
                 </div>

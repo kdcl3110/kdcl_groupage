@@ -7,6 +7,7 @@ import { Package } from './Package.model';
 import { Payment } from './Payment.model';
 import { Notification } from './Notification.model';
 import { ForumMessage, UserForumMessage } from './ForumMessage.model';
+import { Country } from './Country.model';
 
 User.initModel(sequelize);
 Travel.initModel(sequelize);
@@ -16,6 +17,7 @@ Payment.initModel(sequelize);
 Notification.initModel(sequelize);
 ForumMessage.initModel(sequelize);
 UserForumMessage.initModel(sequelize);
+Country.initModel(sequelize);
 
 // User -> Package
 User.hasMany(Package, { foreignKey: 'client_id', as: 'packages' });
@@ -24,6 +26,12 @@ Package.belongsTo(User, { foreignKey: 'client_id', as: 'client' });
 // User -> Travel (un groupeur/admin crée des voyages)
 User.hasMany(Travel, { foreignKey: 'created_by', as: 'travels' });
 Travel.belongsTo(User, { foreignKey: 'created_by', as: 'creator' });
+
+// Country -> Travel (pays d'origine / destination)
+Travel.belongsTo(Country, { foreignKey: 'origin_country_id',      as: 'origin' });
+Travel.belongsTo(Country, { foreignKey: 'destination_country_id', as: 'destination' });
+Country.hasMany(Travel,   { foreignKey: 'origin_country_id',      as: 'origin_travels' });
+Country.hasMany(Travel,   { foreignKey: 'destination_country_id', as: 'destination_travels' });
 
 // Travel -> Package
 Travel.hasMany(Package, { foreignKey: 'travel_id', as: 'packages' });
@@ -65,7 +73,7 @@ ForumMessage.belongsTo(ForumMessage, { foreignKey: 'parent_message_id', as: 'par
 User.belongsToMany(ForumMessage, { through: UserForumMessage, foreignKey: 'user_id', as: 'read_messages' });
 ForumMessage.belongsToMany(User, { through: UserForumMessage, foreignKey: 'message_id', as: 'readers' });
 
-export { User, Travel, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage };
+export { User, Travel, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage, Country };
 export * from './User.model';
 export * from './Travel.model';
 export * from './Recipient.model';
@@ -73,3 +81,4 @@ export * from './Package.model';
 export * from './Payment.model';
 export * from './Notification.model';
 export * from './ForumMessage.model';
+export * from './Country.model';

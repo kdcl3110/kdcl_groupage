@@ -1,9 +1,10 @@
 import { Op, fn, col } from 'sequelize';
 import { Travel, TravelStatus, TransportType, TravelAttributes } from '../../models/Travel.model';
+import { Country } from '../../models/Country.model';
 import { Package, PackageStatus } from '../../models/Package.model';
 import { UserRole } from '../../models/User.model';
 import { ForumMessage, ForumMessageType } from '../../models/ForumMessage.model';
-import { Notification } from '../../models/Notification.model';
+import { createAndPush } from '../notification/notification.helpers';
 import { AppError } from '../../middlewares/errorHandler';
 import type { CreateTravelDto, UpdateTravelDto, UpdateTravelStatusDto } from './travel.dto';
 
@@ -28,6 +29,12 @@ const PACKAGE_ATTRS = [
   'weight', 'volume', 'declared_value', 'status', 'creation_date',
 ];
 
+const COUNTRY_ATTRS = ['country_id', 'name'];
+const COUNTRY_INCLUDE = [
+  { association: 'origin',      attributes: COUNTRY_ATTRS },
+  { association: 'destination', attributes: COUNTRY_ATTRS },
+];
+
 // Réponse aplatie : infos du voyage + capacité actuelle fusionnées
 export type TravelWithLoad = TravelAttributes & {
   packages_count: number;
@@ -47,12 +54,12 @@ export type TravelDetail = TravelWithLoad & {
 export class TravelService {
 
   async create(createdBy: number, data: CreateTravelDto): Promise<Travel> {
-    this.validateCreate(data);
-    return Travel.create({
+    await this.validateCreate(data);
+    const travel = await Travel.create({
       created_by: createdBy,
       transport_type: data.transport_type,
-      origin_country: data.origin_country,
-      destination_country: data.destination_country,
+      origin_country_id: data.origin_country_id,
+      destination_country_id: data.destination_country_id,
       itinerary: data.itinerary ?? null,
       max_weight: data.max_weight,
       max_volume: data.max_volume,
@@ -62,14 +69,17 @@ export class TravelService {
       departure_date: data.departure_date ? new Date(data.departure_date) : null,
       estimated_arrival_date: data.estimated_arrival_date ? new Date(data.estimated_arrival_date) : null,
     });
+    return travel.reload({ include: COUNTRY_INCLUDE });
   }
 
   // Liste (admin = tous, groupeur = les siens)
 
   async getAll(
     caller: { userId: number; role: UserRole },
-    filters: { status?: string; transport_type?: string; origin_country?: string; destination_country?: string },
-  ): Promise<TravelWithLoad[]> {
+    filters: { status?: string; transport_type?: string; origin_country_id?: string; destination_country_id?: string },
+    pagination: { limit: number; offset: number },
+  ): Promise<{ data: TravelWithLoad[]; hasMore: boolean }> {
+    const { limit, offset } = pagination;
     const where: Record<string, unknown> = {};
 
     // Un groupeur ne voit que ses propres voyages
@@ -91,20 +101,28 @@ export class TravelService {
       where.transport_type = filters.transport_type;
     }
 
-    if (filters.origin_country) {
-      where.origin_country = { [Op.like]: `%${filters.origin_country}%` };
-    }
+    if (filters.origin_country_id)      where.origin_country_id      = Number(filters.origin_country_id);
+    if (filters.destination_country_id) where.destination_country_id = Number(filters.destination_country_id);
 
-    if (filters.destination_country) {
-      where.destination_country = { [Op.like]: `%${filters.destination_country}%` };
-    }
+    const rows = await Travel.findAll({
+      where,
+      include: COUNTRY_INCLUDE,
+      order: [['creation_date', 'DESC']],
+      limit: limit + 1, // fetch one extra to detect hasMore
+      offset,
+    });
 
-    const travels = await Travel.findAll({ where, order: [['creation_date', 'DESC']] });
+    const hasMore = rows.length > limit;
+    const travels = hasMore ? rows.slice(0, limit) : rows;
+
     const loadMap = await this.bulkComputeLoad(travels.map((t) => t.travel_id));
 
-    return travels.map((travel) =>
-      this.mergeLoad(travel, loadMap.get(travel.travel_id) ?? this.emptyLoadValues(travel)),
-    );
+    return {
+      data: travels.map((travel) =>
+        this.mergeLoad(travel, loadMap.get(travel.travel_id) ?? this.emptyLoadValues(travel)),
+      ),
+      hasMore,
+    };
   }
 
   async getById(
@@ -112,7 +130,10 @@ export class TravelService {
     caller: { userId: number; role: UserRole },
   ): Promise<TravelDetail> {
     const travel = await Travel.findByPk(travelId, {
-      include: [{ association: 'packages', attributes: PACKAGE_ATTRS }],
+      include: [
+        { association: 'packages', attributes: PACKAGE_ATTRS },
+        ...COUNTRY_INCLUDE,
+      ],
     });
     if (!travel) throw new AppError(404, 'Travel not found');
 
@@ -144,9 +165,9 @@ export class TravelService {
     }
 
     const patch: Record<string, unknown> = {};
-    if (data.transport_type !== undefined)      patch.transport_type = data.transport_type;
-    if (data.origin_country !== undefined)      patch.origin_country = data.origin_country;
-    if (data.destination_country !== undefined) patch.destination_country = data.destination_country;
+    if (data.transport_type !== undefined)        patch.transport_type        = data.transport_type;
+    if (data.origin_country_id !== undefined)     patch.origin_country_id     = data.origin_country_id;
+    if (data.destination_country_id !== undefined) patch.destination_country_id = data.destination_country_id;
     if ('itinerary' in data)                    patch.itinerary = data.itinerary ?? null;
     if (data.container !== undefined)           patch.container = data.container;
     if (data.max_weight !== undefined)          patch.max_weight = data.max_weight;
@@ -216,12 +237,10 @@ export class TravelService {
     const clientIds = [...new Set(packages.map((p) => p.client_id))];
     if (clientIds.length === 0) return;
 
-    await Notification.bulkCreate(
-      clientIds.map((userId) => ({
-        user_id: userId,
-        title: 'Mise à jour de votre voyage',
-        content,
-      })),
+    await Promise.all(
+      clientIds.map((userId) =>
+        createAndPush(userId, 'Mise à jour de votre voyage', content),
+      ),
     );
   }
 
@@ -310,12 +329,21 @@ export class TravelService {
     };
   }
 
-  private validateCreate(data: CreateTravelDto): void {
+  private async validateCreate(data: CreateTravelDto): Promise<void> {
     if (!Object.values(TransportType).includes(data.transport_type)) {
       throw new AppError(400, `transport_type must be one of: ${Object.values(TransportType).join(', ')}`);
     }
-    if (!data.origin_country?.trim())      throw new AppError(400, 'origin_country is required');
-    if (!data.destination_country?.trim()) throw new AppError(400, 'destination_country is required');
+    if (!data.origin_country_id)      throw new AppError(400, 'origin_country_id is required');
+    if (!data.destination_country_id) throw new AppError(400, 'destination_country_id is required');
+    const [origin, destination] = await Promise.all([
+      Country.findByPk(data.origin_country_id),
+      Country.findByPk(data.destination_country_id),
+    ]);
+    if (!origin)      throw new AppError(404, `Country #${data.origin_country_id} not found`);
+    if (!destination) throw new AppError(404, `Country #${data.destination_country_id} not found`);
+    if (data.origin_country_id === data.destination_country_id) {
+      throw new AppError(400, 'Origin and destination countries must be different');
+    }
     if (!data.max_weight || data.max_weight <= 0) throw new AppError(400, 'max_weight must be > 0');
     if (!data.max_volume || data.max_volume <= 0) throw new AppError(400, 'max_volume must be > 0');
 
@@ -327,6 +355,11 @@ export class TravelService {
 
     if (data.departure_date && isNaN(Date.parse(data.departure_date))) {
       throw new AppError(400, 'Invalid departure_date format');
+    }
+    if (data.departure_date) {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const dep   = new Date(data.departure_date); dep.setHours(0, 0, 0, 0);
+      if (dep < today) throw new AppError(400, 'departure_date cannot be in the past');
     }
     if (data.estimated_arrival_date && isNaN(Date.parse(data.estimated_arrival_date))) {
       throw new AppError(400, 'Invalid estimated_arrival_date format');

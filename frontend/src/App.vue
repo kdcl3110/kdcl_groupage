@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { RouterView } from 'vue-router'
 import { isLoading } from '@/stores/loading'
+import ToastNotification from '@/components/common/ToastNotification.vue'
 </script>
 
 <template>
@@ -8,6 +9,7 @@ import { isLoading } from '@/stores/loading'
     <div class="loading-bar" />
   </div>
   <RouterView />
+  <ToastNotification />
 </template>
 
 <style scoped>

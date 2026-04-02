@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from './AppHeader.vue'
 import TabBar from './TabBar.vue'
 import SideNav from './SideNav.vue'
 import NotificationDrawer from './NotificationDrawer.vue'
-import ToastNotification from '@/components/common/ToastNotification.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notifications'
 
@@ -21,6 +20,28 @@ const userName = authStore.user
 
 const mainPaths = ['/voyages', '/colis', '/destinataires', '/forum', '/profil']
 const isMainPage = computed(() => mainPaths.includes(route.path))
+
+// ── SSE lifecycle + Page Visibility ──────────────────────────────────────────
+
+function handleVisibilityChange() {
+  if (document.visibilityState === 'hidden') {
+    // Tab is in background — close the SSE connection to free server resources
+    notifStore.disconnect()
+  } else {
+    // Tab is visible again — reconnect
+    notifStore.connect()
+  }
+}
+
+onMounted(() => {
+  notifStore.connect()
+  document.addEventListener('visibilitychange', handleVisibilityChange)
+})
+
+onUnmounted(() => {
+  notifStore.disconnect()
+  document.removeEventListener('visibilitychange', handleVisibilityChange)
+})
 </script>
 
 <template>
@@ -48,5 +69,4 @@ const isMainPage = computed(() => mainPaths.includes(route.path))
     @close="showNotifications = false"
   />
 
-  <ToastNotification />
 </template>

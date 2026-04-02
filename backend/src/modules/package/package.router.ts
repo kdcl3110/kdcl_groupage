@@ -19,7 +19,9 @@ router.patch('/:id/cancel',    authenticate, PackageController.cancelPackage);
 router.patch('/:id/submit',    authenticate, PackageController.submitToTravel);
 
 // Routes admin/freight_forwarder
-router.patch('/:id/validate',  authenticate, adminOrFF, PackageController.validatePackage);
-router.patch('/:id/reassign',  authenticate, adminOrFF, PackageController.adminReassign);
+router.get('/:id/manager-detail', authenticate, adminOrFF, PackageController.getPackageForManager);
+router.patch('/:id/validate',     authenticate, adminOrFF, PackageController.validatePackage);
+router.patch('/:id/reject',       authenticate, adminOrFF, PackageController.rejectPackage);
+router.patch('/:id/reassign',     authenticate, adminOrFF, PackageController.adminReassign);
 
 export default router;

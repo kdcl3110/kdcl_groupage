@@ -1,11 +1,13 @@
 import { env } from './src/configs/env.config';
 import { connectDatabase, sequelize, syncDatabase } from './src/configs/database.config';
 import './src/models'; // initialize models and associations
+import { seedCountries } from './src/configs/seed';
 import createApp from './src/app';
 
 async function bootstrap(): Promise<void> {
   await connectDatabase();
   await syncDatabase();
+  await seedCountries();
 
   const app = createApp();
 

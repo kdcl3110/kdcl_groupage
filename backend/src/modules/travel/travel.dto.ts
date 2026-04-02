@@ -2,8 +2,8 @@ import { TransportType } from '../../models/Travel.model';
 
 export interface CreateTravelDto {
   transport_type: TransportType;
-  origin_country: string;
-  destination_country: string;
+  origin_country_id: number;
+  destination_country_id: number;
   itinerary?: string;
   max_weight: number;
   max_volume: number;
@@ -16,8 +16,8 @@ export interface CreateTravelDto {
 
 export interface UpdateTravelDto {
   transport_type?: TransportType;
-  origin_country?: string;
-  destination_country?: string;
+  origin_country_id?: number;
+  destination_country_id?: number;
   itinerary?: string | null;
   container?: string | null;
   max_weight?: number;

@@ -17,8 +17,8 @@ export interface TravelAttributes {
   travel_id: number;
   created_by: number;
   transport_type: TransportType;
-  origin_country: string;
-  destination_country: string;
+  origin_country_id: number;
+  destination_country_id: number;
   itinerary: string | null;
   status: TravelStatus;
   container: string | null;
@@ -47,8 +47,8 @@ export class Travel extends Model<TravelAttributes, TravelCreationAttributes> {
   declare travel_id: number;
   declare created_by: number;
   declare transport_type: TransportType;
-  declare origin_country: string;
-  declare destination_country: string;
+  declare origin_country_id: number;
+  declare destination_country_id: number;
   declare itinerary: string | null;
   declare status: TravelStatus;
   declare container: string | null;
@@ -80,13 +80,15 @@ export class Travel extends Model<TravelAttributes, TravelCreationAttributes> {
           type: DataTypes.ENUM(...Object.values(TransportType)),
           allowNull: false,
         },
-        origin_country: {
-          type: DataTypes.STRING(100),
+        origin_country_id: {
+          type: DataTypes.INTEGER.UNSIGNED,
           allowNull: false,
+          references: { model: 'country', key: 'country_id' },
         },
-        destination_country: {
-          type: DataTypes.STRING(100),
+        destination_country_id: {
+          type: DataTypes.INTEGER.UNSIGNED,
           allowNull: false,
+          references: { model: 'country', key: 'country_id' },
         },
         itinerary: {
           type: DataTypes.STRING(255),

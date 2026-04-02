@@ -2,8 +2,9 @@ import { Op } from 'sequelize';
 import { Package, PackageStatus } from '../../models/Package.model';
 import { Travel, TravelStatus, TransportType } from '../../models/Travel.model';
 import { Recipient } from '../../models/Recipient.model';
-import { Notification } from '../../models/Notification.model';
+import { User, UserRole } from '../../models/User.model';
 import { AppError } from '../../middlewares/errorHandler';
+import { createAndPush } from '../notification/notification.helpers';
 import type {
   CreatePackageDto,
   UpdatePackageDto,
@@ -15,8 +16,11 @@ const RECIPIENT_ATTRS = [
   'recipient_id', 'first_name', 'last_name', 'phone', 'address', 'city', 'country', 'email',
 ];
 const TRAVEL_ATTRS = [
-  'travel_id', 'status', 'transport_type', 'origin_country', 'destination_country',
+  'travel_id', 'status', 'transport_type', 'origin_country_id', 'destination_country_id',
   'itinerary', 'departure_date', 'estimated_arrival_date',
+];
+const CLIENT_ATTRS = [
+  'user_id', 'first_name', 'last_name', 'email', 'phone', 'city', 'country',
 ];
 
 export interface TravelLoad {
@@ -209,15 +213,47 @@ export class PackageService {
     return { message: 'Package deleted successfully' };
   }
 
-  async getMyPackages(clientId: number): Promise<Package[]> {
-    return Package.findAll({
-      where: { client_id: clientId },
-      include: [
-        { association: 'recipient', attributes: RECIPIENT_ATTRS },
-        { association: 'travel', attributes: TRAVEL_ATTRS },
-      ],
-      order: [['creation_date', 'DESC']],
-    });
+  async getPackages(
+    caller: { userId: number; role: UserRole },
+    filters: { travel_id?: number },
+    pagination: { limit: number; offset: number },
+  ): Promise<{ data: Package[]; hasMore: boolean }> {
+    const { limit, offset } = pagination;
+    const fetchLimit = limit + 1; // fetch one extra to detect hasMore
+
+    const include = [
+      { association: 'recipient', attributes: RECIPIENT_ATTRS },
+      { association: 'travel',    attributes: TRAVEL_ATTRS },
+    ];
+
+    let rows: Package[];
+
+    // Client: only their own packages
+    if (caller.role === UserRole.CLIENT) {
+      const where: Record<string, unknown> = { client_id: caller.userId };
+      if (filters.travel_id) where.travel_id = filters.travel_id;
+      rows = await Package.findAll({ where, include, order: [['creation_date', 'DESC']], limit: fetchLimit, offset });
+    } else if (caller.role === UserRole.ADMIN) {
+      // Admin: all packages, with optional travel_id filter
+      const where: Record<string, unknown> = {};
+      if (filters.travel_id) where.travel_id = filters.travel_id;
+      rows = await Package.findAll({ where, include, order: [['creation_date', 'DESC']], limit: fetchLimit, offset });
+    } else {
+      // Freight forwarder: must provide travel_id, and the travel must belong to them
+      if (!filters.travel_id) return { data: [], hasMore: false };
+      const travel = await Travel.findByPk(filters.travel_id, { attributes: ['created_by'] });
+      if (!travel || travel.created_by !== caller.userId) return { data: [], hasMore: false };
+      rows = await Package.findAll({
+        where: { travel_id: filters.travel_id },
+        include,
+        order: [['creation_date', 'DESC']],
+        limit: fetchLimit,
+        offset,
+      });
+    }
+
+    const hasMore = rows.length > limit;
+    return { data: hasMore ? rows.slice(0, limit) : rows, hasMore };
   }
 
   async getById(packageId: number, clientId: number): Promise<Package> {
@@ -231,6 +267,64 @@ export class PackageService {
     });
     if (!pkg) throw new AppError(404, 'Package not found');
     return pkg;
+  }
+
+  async getByIdForManager(
+    packageId: number,
+    caller: { userId: number; role: UserRole },
+  ): Promise<Package> {
+    const pkg = await Package.findByPk(packageId, {
+      include: [
+        { association: 'recipient', attributes: RECIPIENT_ATTRS },
+        { association: 'travel',    attributes: TRAVEL_ATTRS },
+        { association: 'client',    attributes: CLIENT_ATTRS },
+      ],
+    });
+    if (!pkg) throw new AppError(404, 'Package not found');
+
+    // Un groupeur ne peut voir que les colis liés à ses propres voyages
+    if (caller.role === UserRole.FREIGHT_FORWARDER && pkg.travel_id) {
+      const travel = await Travel.findByPk(pkg.travel_id, { attributes: ['created_by'] });
+      if (!travel || travel.created_by !== caller.userId) {
+        throw new AppError(403, 'Access denied: this package does not belong to your travel');
+      }
+    }
+
+    return pkg;
+  }
+
+  async rejectPackage(
+    packageId: number,
+    caller: { userId: number; role: UserRole },
+  ): Promise<Package> {
+    const pkg = await Package.findByPk(packageId);
+    if (!pkg) throw new AppError(404, 'Package not found');
+
+    if (pkg.status !== PackageStatus.SUBMITTED) {
+      throw new AppError(400, `Only submitted packages can be rejected (current status: "${pkg.status}")`);
+    }
+
+    if (caller.role === UserRole.FREIGHT_FORWARDER && pkg.travel_id) {
+      const travel = await Travel.findByPk(pkg.travel_id, { attributes: ['created_by'] });
+      if (!travel || travel.created_by !== caller.userId) {
+        throw new AppError(403, 'Access denied: this package does not belong to your travel');
+      }
+    }
+
+    await pkg.update({ status: PackageStatus.PENDING, travel_id: null });
+
+    await this.notify(
+      pkg.client_id,
+      'Colis rejeté',
+      `Votre colis ${pkg.tracking_number} a été refusé par le groupeur et repassé en attente. Vous pouvez le soumettre à un autre voyage.`,
+    );
+
+    return pkg.reload({
+      include: [
+        { association: 'recipient', attributes: RECIPIENT_ATTRS },
+        { association: 'travel',    attributes: TRAVEL_ATTRS },
+      ],
+    });
   }
 
   async adminReassign(packageId: number, dto: AdminReassignDto): Promise<Package> {
@@ -359,7 +453,7 @@ export class PackageService {
   }
 
   private async notify(userId: number, title: string, content: string): Promise<void> {
-    await Notification.create({ user_id: userId, title, content });
+    await createAndPush(userId, title, content);
   }
 
   private validatePackageFields(data: CreatePackageDto): void {

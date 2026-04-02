@@ -2,7 +2,7 @@ import api from './client'
 import type { Package } from '@/types'
 
 export const packagesApi = {
-  getAll: (params?: Record<string, string>) => api.get<Package[]>('/packages', { params }),
+  getAll: (params?: Record<string, string>) => api.get<{ data: Package[]; hasMore: boolean }>('/packages', { params }),
   getById: (id: number) => api.get<Package>(`/packages/${id}`),
   create: (data: FormData) =>
     api.post<{ package: Package; travel_load?: object }>('/packages', data, {
@@ -15,4 +15,7 @@ export const packagesApi = {
     api.patch<Package>(`/packages/${id}/submit`, { travel_id }),
   validate: (id: number) =>
     api.patch<{ package: Package; travel_load: object }>(`/packages/${id}/validate`),
+  reject: (id: number) => api.patch<Package>(`/packages/${id}/reject`),
+  getForManager: (id: number) =>
+    api.get<Package>(`/packages/${id}/manager-detail`),
 }
