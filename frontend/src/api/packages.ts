@@ -8,7 +8,10 @@ export const packagesApi = {
     api.post<{ package: Package; travel_load?: object }>('/packages', data, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
-  update: (id: number, data: object) => api.put<Package>(`/packages/${id}`, data),
+  update: (id: number, data: FormData) =>
+    api.put<Package>(`/packages/${id}`, data, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
   remove: (id: number) => api.delete(`/packages/${id}`),
   cancel: (id: number) => api.patch(`/packages/${id}/cancel`),
   submit: (id: number, travel_id: number) =>
@@ -18,4 +21,6 @@ export const packagesApi = {
   reject: (id: number) => api.patch<Package>(`/packages/${id}/reject`),
   getForManager: (id: number) =>
     api.get<Package>(`/packages/${id}/manager-detail`),
+  reassign: (id: number, travel_id: number) =>
+    api.patch<Package>(`/packages/${id}/reassign`, { travel_id }),
 }

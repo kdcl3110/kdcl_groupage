@@ -25,15 +25,25 @@ const packages = ref<Package[]>([])
 const loading = ref(true)
 const error = ref('')
 
-const submittedPackages = computed(() => packages.value.filter(p => p.status === 'submitted'))
-const otherPackages     = computed(() => packages.value.filter(p => p.status !== 'submitted'))
+const submittedPackages  = computed(() => packages.value.filter(p => p.status === 'submitted'))
+const otherPackages      = computed(() => packages.value.filter(p => p.status !== 'submitted'))
+const inTravelPackages   = computed(() => packages.value.filter(p => p.status === 'in_travel'))
 
 const travelId = computed(() => Number(route.params.id))
 
 // ─── Status management ───────────────────────────────────────────────────────
 const statusLoading = ref(false)
 const statusError = ref('')
+
+// Dialog annulation simple (pas de colis engagés)
 const confirmCancelDialog = ref(false)
+
+// Dialog réassignation (colis in_travel présents)
+const showReassignDialog       = ref(false)
+const reassignTravels          = ref<Travel[]>([])
+const reassignTravelsLoading   = ref(false)
+const reassignTargetTravel     = ref<Travel | null>(null)
+const reassignLoading          = ref(false)
 
 const travelActions = computed(() => {
   if (!travel.value) return []
@@ -72,7 +82,11 @@ async function updateTravelStatus(newStatus: string) {
 
 function handleActionClick(target: string) {
   if (target === 'cancelled') {
-    confirmCancelDialog.value = true
+    if (inTravelPackages.value.length > 0) {
+      openReassignDialog()
+    } else {
+      confirmCancelDialog.value = true
+    }
   } else {
     updateTravelStatus(target)
   }
@@ -81,6 +95,78 @@ function handleActionClick(target: string) {
 async function confirmCancel() {
   confirmCancelDialog.value = false
   await updateTravelStatus('cancelled')
+}
+
+async function openReassignDialog() {
+  showReassignDialog.value = true
+  reassignTargetTravel.value = null
+  reassignTravelsLoading.value = true
+  try {
+    const { data } = await travelsApi.getAll({ status: 'open', limit: '100' })
+    reassignTravels.value = data.data.filter(t => t.travel_id !== travelId.value)
+  } catch {
+    reassignTravels.value = []
+  } finally {
+    reassignTravelsLoading.value = false
+  }
+}
+
+async function confirmCancelWithReassign() {
+  if (!reassignTargetTravel.value) return
+  reassignLoading.value = true
+  try {
+    const { data } = await travelsApi.updateStatus(travelId.value, 'cancelled', reassignTargetTravel.value.travel_id)
+    travel.value = data as Travel
+    showReassignDialog.value = false
+    toast.success(`Voyage annulé. Les ${inTravelPackages.value.length} colis ont été transférés.`)
+    // Recharge les colis pour refléter la réassignation
+    const pkgsRes = await packagesApi.getAll({ travel_id: String(travelId.value), limit: '1000' })
+    packages.value = pkgsRes.data.data.filter(p => p.travel_id === travelId.value)
+  } catch (err) {
+    toast.error(apiError(err, 'Erreur lors de l\'annulation du voyage.'))
+  } finally {
+    reassignLoading.value = false
+  }
+}
+
+// ─── Move package to another travel ──────────────────────────────────────────
+const showMoveSheet      = ref(false)
+const movingPkg          = ref<Package | null>(null)
+const moveTravels        = ref<Travel[]>([])
+const moveTravelsLoading = ref(false)
+const moveTarget         = ref<Travel | null>(null)
+const moveLoading        = ref(false)
+
+async function openMoveSheet(pkg: Package) {
+  movingPkg.value = pkg
+  moveTarget.value = null
+  showMoveSheet.value = true
+  moveTravelsLoading.value = true
+  try {
+    const { data } = await travelsApi.getAll({ status: 'open', limit: '100' })
+    moveTravels.value = data.data.filter(t => t.travel_id !== travelId.value)
+  } catch {
+    moveTravels.value = []
+  } finally {
+    moveTravelsLoading.value = false
+  }
+}
+
+async function confirmMove() {
+  if (!movingPkg.value || !moveTarget.value) return
+  moveLoading.value = true
+  try {
+    await packagesApi.reassign(movingPkg.value.package_id, moveTarget.value.travel_id)
+    packages.value = packages.value.filter(p => p.package_id !== movingPkg.value!.package_id)
+    const { data: t } = await travelsApi.getById(travelId.value)
+    travel.value = t
+    showMoveSheet.value = false
+    toast.success(`Colis déplacé vers le voyage #${moveTarget.value.travel_id}.`)
+  } catch (err) {
+    toast.error(apiError(err, 'Impossible de déplacer le colis.'))
+  } finally {
+    moveLoading.value = false
+  }
 }
 
 // ─── Package status management ───────────────────────────────────────────────
@@ -393,6 +479,16 @@ onMounted(fetchData)
                       <span>{{ pkg.weight }} kg</span><span>·</span>
                       <span>{{ pkg.volume }} m³</span><span>·</span>
                       <span>{{ pkg.declared_value }} €</span>
+                      <template v-if="travel?.price_per_unit">
+                        <span>·</span>
+                        <span class="text-amber-400 font-semibold">
+                          ~{{ (
+                            Number(travel.price_per_unit) *
+                            (travel.transport_type === 'plane' ? Number(pkg.weight) : Number(pkg.volume)) *
+                            ({ normal: 1, fragile: 1.2, tres_fragile: 1.5 }[pkg.fragility] ?? 1)
+                          ).toFixed(2) }} €
+                        </span>
+                      </template>
                     </div>
                   </div>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint shrink-0 ml-2">
@@ -457,10 +553,14 @@ onMounted(fetchData)
                 <span>{{ pkg.weight }} kg</span><span>·</span>
                 <span>{{ pkg.volume }} m³</span><span>·</span>
                 <span>{{ pkg.declared_value }} €</span>
+                <template v-if="pkg.price != null">
+                  <span>·</span>
+                  <span class="text-[var(--primary)] font-semibold">{{ Number(pkg.price).toFixed(2) }} €</span>
+                </template>
               </div>
 
               <!-- Package actions for manager (non-submitted) -->
-              <template v-if="isManager && packageActions(pkg).length > 0">
+              <template v-if="isManager && (packageActions(pkg).length > 0 || pkg.status === 'in_travel')">
                 <div class="border-t border-[var(--glass-border)] mt-1 pt-2 flex items-center gap-2 flex-wrap">
                   <button
                     v-for="action in packageActions(pkg)"
@@ -474,6 +574,17 @@ onMounted(fetchData)
                   >
                     <svg v-if="pkgStatusLoading[pkg.package_id]" class="animate-spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
                     {{ action.label }}
+                  </button>
+                  <button
+                    v-if="pkg.status === 'in_travel'"
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[8px] text-[12px] font-semibold border-[1.5px] cursor-pointer transition-all active:scale-[0.96] disabled:opacity-40 border-[var(--primary-30)] text-[var(--primary)] bg-transparent hover:bg-[var(--primary-10)]"
+                    :disabled="pkgStatusLoading[pkg.package_id]"
+                    @click.stop="openMoveSheet(pkg)"
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>
+                    </svg>
+                    Déplacer
                   </button>
                   <p v-if="pkgStatusError[pkg.package_id]" class="text-[11px] text-red-400 w-full">{{ pkgStatusError[pkg.package_id] }}</p>
                 </div>
@@ -552,6 +663,108 @@ onMounted(fetchData)
               </button>
             </div>
           </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Reassign dialog (colis engagés) -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showReassignDialog" class="overlay flex items-end md:items-center justify-center px-4" @click.self="showReassignDialog = false">
+          <Transition name="slide-up">
+            <div v-if="showReassignDialog" class="sheet w-full max-w-[480px] md:rounded-3xl rounded-t-3xl flex flex-col" style="max-height: 88dvh;">
+              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
+
+              <!-- Header -->
+              <div class="flex items-center justify-between px-5 py-4 shrink-0">
+                <h2 class="text-[17px] font-extrabold text-app-primary">Annuler le voyage</h2>
+                <button class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none text-lg leading-none" @click="showReassignDialog = false">×</button>
+              </div>
+              <div class="border-t border-[var(--glass-border)] shrink-0" />
+
+              <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+                <!-- Avertissement -->
+                <div class="flex items-start gap-3 px-3.5 py-3 bg-amber-500/10 border border-amber-500/25 rounded-[14px]">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-amber-400 shrink-0 mt-0.5">
+                    <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  <p class="text-[13px] text-amber-400 leading-snug">
+                    Ce voyage contient <strong>{{ inTravelPackages.length }} colis engagé{{ inTravelPackages.length > 1 ? 's' : '' }}</strong>.
+                    Choisissez un autre voyage ouvert pour les transférer avant l'annulation.
+                  </p>
+                </div>
+
+                <!-- Liste des voyages disponibles -->
+                <div class="flex flex-col gap-2">
+                  <p class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Voyage de destination</p>
+
+                  <div v-if="reassignTravelsLoading" class="flex flex-col gap-2">
+                    <div v-for="i in 3" :key="i" class="skeleton h-[68px] rounded-[14px]" />
+                  </div>
+
+                  <div v-else-if="reassignTravels.length === 0" class="py-6 text-center text-sm text-app-muted">
+                    Aucun autre voyage ouvert disponible.<br>
+                    <span class="text-xs text-app-faint">Créez un nouveau voyage avant d'annuler celui-ci.</span>
+                  </div>
+
+                  <div v-else class="flex flex-col gap-2">
+                    <div
+                      v-for="t in reassignTravels"
+                      :key="t.travel_id"
+                      class="flex items-center gap-3 px-3.5 py-3 rounded-[14px] cursor-pointer transition-all border"
+                      :class="reassignTargetTravel?.travel_id === t.travel_id
+                        ? 'bg-[var(--primary-15)] border-[var(--primary)]'
+                        : 'glass-subtle border-transparent'"
+                      @click="reassignTargetTravel = t"
+                    >
+                      <div class="w-9 h-9 rounded-[10px] bg-[var(--primary-15)] border border-[var(--primary-25)] flex items-center justify-center text-[var(--primary)] shrink-0">
+                        <svg v-if="t.transport_type === 'ship'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M2 21c.6.5 1.2 1 2.5 1C7 22 7 20 9.5 20c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>
+                          <path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/>
+                          <path d="M19 13V7a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v6"/><path d="M12 10v4"/><path d="M12 2v3"/>
+                        </svg>
+                        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21 4 19 4H6L4 2 2 2v2l2 2-3 7 2.8.6"/>
+                          <path d="M15 15l-5.4-5.4"/><path d="M5 19 7 21"/><path d="M19 19l2 2"/>
+                        </svg>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-[14px] font-bold text-app-primary truncate">{{ t.origin.name }} → {{ t.destination.name }}</p>
+                        <p class="text-[12px] text-app-muted">{{ t.packages_count }} colis · #{{ t.travel_id }}</p>
+                      </div>
+                      <div v-if="reassignTargetTravel?.travel_id === t.travel_id" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer -->
+              <div class="border-t border-[var(--glass-border)] shrink-0 px-5 py-4 flex gap-2.5">
+                <button
+                  class="flex-1 px-4 py-2.5 rounded-[12px] text-sm font-semibold text-app-muted glass cursor-pointer border-none transition-all hover:text-app-primary active:scale-[0.97]"
+                  @click="showReassignDialog = false"
+                >
+                  Retour
+                </button>
+                <button
+                  class="flex-1 px-4 py-2.5 rounded-[12px] text-sm font-semibold cursor-pointer transition-all border-[1.5px] active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+                  :class="reassignTargetTravel
+                    ? 'bg-[rgba(239,68,68,0.1)] border-[rgba(239,68,68,0.25)] text-red-400 hover:bg-[rgba(239,68,68,0.15)]'
+                    : 'bg-transparent border-[var(--glass-border)] text-app-faint'"
+                  :disabled="!reassignTargetTravel || reassignLoading"
+                  @click="confirmCancelWithReassign"
+                >
+                  <span v-if="reassignLoading" class="btn-spinner border-red-400/40 border-t-red-400" />
+                  <span v-else>Transférer et annuler</span>
+                </button>
+              </div>
+            </div>
+          </Transition>
         </div>
       </Transition>
     </Teleport>
@@ -698,6 +911,96 @@ onMounted(fetchData)
                     Soumettre
                   </button>
                 </div>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
+    <!-- Move package sheet -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showMoveSheet" class="overlay flex items-end md:items-center justify-center px-4" @click.self="showMoveSheet = false">
+          <Transition name="slide-up">
+            <div v-if="showMoveSheet" class="sheet w-full max-w-[480px] md:rounded-3xl rounded-t-3xl flex flex-col" style="max-height: 88dvh;">
+              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
+
+              <!-- Header -->
+              <div class="flex items-center justify-between px-5 py-4 shrink-0">
+                <div>
+                  <h2 class="text-[17px] font-extrabold text-app-primary">Déplacer le colis</h2>
+                  <p v-if="movingPkg" class="text-[12px] text-app-muted font-mono mt-0.5">{{ movingPkg.tracking_number }}</p>
+                </div>
+                <button class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none text-lg leading-none" @click="showMoveSheet = false">×</button>
+              </div>
+              <div class="border-t border-[var(--glass-border)] shrink-0" />
+
+              <div class="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-4">
+                <div class="flex flex-col gap-2">
+                  <p class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Choisir le voyage de destination</p>
+
+                  <div v-if="moveTravelsLoading" class="flex flex-col gap-2">
+                    <div v-for="i in 3" :key="i" class="skeleton h-[68px] rounded-[14px]" />
+                  </div>
+
+                  <div v-else-if="moveTravels.length === 0" class="py-6 text-center text-sm text-app-muted">
+                    Aucun autre voyage ouvert disponible.
+                  </div>
+
+                  <div v-else class="flex flex-col gap-2">
+                    <div
+                      v-for="t in moveTravels"
+                      :key="t.travel_id"
+                      class="flex items-center gap-3 px-3.5 py-3 rounded-[14px] cursor-pointer transition-all border"
+                      :class="moveTarget?.travel_id === t.travel_id
+                        ? 'bg-[var(--primary-15)] border-[var(--primary)]'
+                        : 'glass-subtle border-transparent'"
+                      @click="moveTarget = t"
+                    >
+                      <div class="w-9 h-9 rounded-[10px] bg-[var(--primary-15)] border border-[var(--primary-25)] flex items-center justify-center text-[var(--primary)] shrink-0">
+                        <svg v-if="t.transport_type === 'ship'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M2 21c.6.5 1.2 1 2.5 1C7 22 7 20 9.5 20c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>
+                          <path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/>
+                          <path d="M19 13V7a1 1 0 0 0-1-1H6a1 1 0 0 0-1 1v6"/><path d="M12 10v4"/><path d="M12 2v3"/>
+                        </svg>
+                        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21 4 19 4H6L4 2 2 2v2l2 2-3 7 2.8.6"/>
+                          <path d="M15 15l-5.4-5.4"/><path d="M5 19 7 21"/><path d="M19 19l2 2"/>
+                        </svg>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-[14px] font-bold text-app-primary truncate">{{ t.origin.name }} → {{ t.destination.name }}</p>
+                        <p class="text-[12px] text-app-muted">{{ t.packages_count }} colis · #{{ t.travel_id }}</p>
+                      </div>
+                      <div v-if="moveTarget?.travel_id === t.travel_id" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer -->
+              <div class="border-t border-[var(--glass-border)] shrink-0 px-5 py-4 flex gap-2.5">
+                <button
+                  class="flex-1 px-4 py-2.5 rounded-[12px] text-sm font-semibold text-app-muted glass cursor-pointer border-none transition-all hover:text-app-primary active:scale-[0.97]"
+                  @click="showMoveSheet = false"
+                >
+                  Retour
+                </button>
+                <button
+                  class="flex-1 px-4 py-2.5 rounded-[12px] text-sm font-semibold cursor-pointer transition-all border-[1.5px] active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+                  :class="moveTarget
+                    ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary-15)]'
+                    : 'bg-transparent border-[var(--glass-border)] text-app-faint'"
+                  :disabled="!moveTarget || moveLoading"
+                  @click="confirmMove"
+                >
+                  <span v-if="moveLoading" class="btn-spinner" />
+                  <span v-else>Déplacer</span>
+                </button>
               </div>
             </div>
           </Transition>

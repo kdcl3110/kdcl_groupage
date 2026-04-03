@@ -13,7 +13,7 @@ const adminOrFF = requireRole(UserRole.ADMIN, UserRole.FREIGHT_FORWARDER);
 router.post('/',               authenticate, uploadPackageImages, PackageController.createPackage);
 router.get('/',                authenticate, PackageController.getMyPackages);
 router.get('/:id',             authenticate, PackageController.getPackageById);
-router.put('/:id',             authenticate, PackageController.updatePackage);
+router.put('/:id',             authenticate, uploadPackageImages, PackageController.updatePackage);
 router.delete('/:id',          authenticate, PackageController.deletePackage);
 router.patch('/:id/cancel',    authenticate, PackageController.cancelPackage);
 router.patch('/:id/submit',    authenticate, PackageController.submitToTravel);

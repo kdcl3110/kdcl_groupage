@@ -10,6 +10,8 @@ import AppButton from '@/components/common/AppButton.vue'
 import RefreshButton from '@/components/common/RefreshButton.vue'
 import FloatingActionButton from '@/components/common/FloatingActionButton.vue'
 import PhoneInput from '@/components/common/PhoneInput.vue'
+import ImagePicker from '@/components/common/ImagePicker.vue'
+import { AlertCircle, Package as PackageIcon, AlertTriangle, ShieldAlert } from 'lucide-vue-next'
 import { packagesApi } from '@/api/packages'
 import { recipientsApi } from '@/api/recipients'
 import { travelsApi } from '@/api/travels'
@@ -59,13 +61,25 @@ const form = reactive({
   weight: '',
   volume: '',
   declared_value: '',
+  fragility: 'normal' as 'normal' | 'fragile' | 'tres_fragile',
   special_instructions: '',
 })
 
 // Step 2 — recipient + images
 const recipients = ref<Recipient[]>([])
 const selectedRecipient = ref<Recipient | null>(null)
-const images = ref<(File | null)[]>([null, null, null, null])
+const imgFiles    = ref<(File | null)[]>([null, null, null, null])
+const imgPreviews = ref<(string | null)[]>([null, null, null, null])
+
+function updateImgFile(i: number, file: File | null) {
+  if (imgPreviews.value[i]) URL.revokeObjectURL(imgPreviews.value[i]!)
+  imgFiles.value[i] = file
+  imgPreviews.value[i] = file ? URL.createObjectURL(file) : null
+}
+
+onUnmounted(() => {
+  imgPreviews.value.forEach((u) => { if (u) URL.revokeObjectURL(u) })
+})
 
 // New recipient inline form
 const showNewRecipient = ref(false)
@@ -113,16 +127,12 @@ async function saveNewRecipient() {
     newRecipientLoading.value = false
   }
 }
-const previews = computed(() =>
-  images.value.map((f) => (f ? URL.createObjectURL(f) : null)),
-)
-
 // Step 3 — travel
 const travels = ref<Travel[]>([])
 const selectedTravel = ref<Travel | null>(null)
 const noTravel = ref(false)
 
-// ─── Validation ─────────────────────────────────────────────────────────────
+// Validation
 const step1Valid = computed(
   () =>
     form.description.trim() &&
@@ -130,14 +140,14 @@ const step1Valid = computed(
     parseFloat(form.volume) > 0 &&
     parseFloat(form.declared_value) >= 0,
 )
-const step2Valid = computed(() => selectedRecipient.value !== null && images.value[0] !== null)
+const step2Valid = computed(() => selectedRecipient.value !== null && imgFiles.value[0] !== null)
 const step3Valid = computed(() => selectedTravel.value !== null || noTravel.value)
 
 function pkgDisplayStatus(pkg: Package) {
   return pkg.status
 }
 
-// ─── Data fetch ─────────────────────────────────────────────────────────────
+// Data fetch
 async function fetchPackages(reset = true) {
   if (reset) {
     offset.value = 0
@@ -176,29 +186,7 @@ async function fetchFormData() {
   }
 }
 
-// ─── Image handling ──────────────────────────────────────────────────────────
-function handleImagePick(index: number, event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0]
-  if (!file) return
-  // Revoke previous object URL to avoid memory leaks
-  if (images.value[index]) {
-    URL.revokeObjectURL(previews.value[index]!)
-  }
-  images.value[index] = file
-}
-
-function removeImage(index: number) {
-  if (images.value[index]) {
-    URL.revokeObjectURL(previews.value[index]!)
-    images.value[index] = null
-  }
-}
-
-onUnmounted(() => {
-  previews.value.forEach((url) => { if (url) URL.revokeObjectURL(url) })
-})
-
-// ─── Wizard navigation ───────────────────────────────────────────────────────
+// Wizard navigation
 function openSheet() {
   resetForm()
   showSheet.value = true
@@ -211,11 +199,14 @@ function resetForm() {
   form.weight = ''
   form.volume = ''
   form.declared_value = ''
+  form.fragility = 'normal'
   form.special_instructions = ''
   selectedRecipient.value = null
   showNewRecipient.value = false
   newRecipientError.value = ''
-  images.value = [null, null, null, null]
+  imgPreviews.value.forEach((u) => { if (u) URL.revokeObjectURL(u) })
+  imgFiles.value    = [null, null, null, null]
+  imgPreviews.value = [null, null, null, null]
   selectedTravel.value = null
   noTravel.value = false
   formError.value = ''
@@ -250,7 +241,7 @@ function skipTravel() {
   noTravel.value = true
 }
 
-// ─── Submit ──────────────────────────────────────────────────────────────────
+// Submit
 async function handleSubmit() {
   formError.value = ''
   formLoading.value = true
@@ -260,10 +251,11 @@ async function handleSubmit() {
     fd.append('weight', form.weight)
     fd.append('volume', form.volume)
     fd.append('declared_value', form.declared_value)
+    fd.append('fragility', form.fragility)
     if (form.special_instructions) fd.append('special_instructions', form.special_instructions)
     fd.append('recipient_id', String(selectedRecipient.value!.recipient_id))
     if (selectedTravel.value) fd.append('travel_id', String(selectedTravel.value.travel_id))
-    images.value.forEach((file, i) => {
+    imgFiles.value.forEach((file, i) => {
       if (file) fd.append(`image${i + 1}`, file)
     })
     await packagesApi.create(fd)
@@ -341,17 +333,19 @@ onMounted(fetchPackages)
       </div>
 
       <!-- Error -->
-      <EmptyState v-else-if="error" icon="⚠️" title="Erreur" :message="error">
+      <EmptyState v-else-if="error" title="Erreur" :message="error">
+        <template #icon><AlertCircle :size="40" /></template>
         <AppButton variant="outline" class="mt-1" @click="fetchPackages">Réessayer</AppButton>
       </EmptyState>
 
       <!-- Empty -->
       <EmptyState
         v-else-if="filtered.length === 0"
-        icon="📦"
         title="Aucun colis"
         :message="activeFilter === 'all' ? 'Ajoutez votre premier colis en cliquant sur le bouton +.' : 'Aucun colis avec ce statut pour le moment.'"
-      />
+      >
+        <template #icon><PackageIcon :size="40" /></template>
+      </EmptyState>
 
       <!-- List -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -488,6 +482,47 @@ onMounted(fetchPackages)
                     <input v-model="form.declared_value" type="number" min="0" class="input-field" placeholder="0" />
                   </div>
 
+                  <!-- Fragilité -->
+                  <div class="flex flex-col gap-1.5">
+                    <label class="field-label">Fragilité *</label>
+                    <div class="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        class="flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-[12px] border-[1.5px] text-[12px] font-semibold transition-all cursor-pointer"
+                        :class="form.fragility === 'normal'
+                          ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)]'
+                          : 'bg-transparent border-[var(--glass-border)] text-app-muted'"
+                        @click="form.fragility = 'normal'"
+                      >
+                        <PackageIcon :size="18" />
+                        Normal
+                      </button>
+                      <button
+                        type="button"
+                        class="flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-[12px] border-[1.5px] text-[12px] font-semibold transition-all cursor-pointer"
+                        :class="form.fragility === 'fragile'
+                          ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)]'
+                          : 'bg-transparent border-[var(--glass-border)] text-app-muted'"
+                        @click="form.fragility = 'fragile'"
+                      >
+                        <AlertTriangle :size="18" />
+                        Fragile
+                      </button>
+                      <button
+                        type="button"
+                        class="flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-[12px] border-[1.5px] text-[12px] font-semibold transition-all cursor-pointer"
+                        :class="form.fragility === 'tres_fragile'
+                          ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)]'
+                          : 'bg-transparent border-[var(--glass-border)] text-app-muted'"
+                        @click="form.fragility = 'tres_fragile'"
+                      >
+                        <ShieldAlert :size="18" />
+                        Très fragile
+                      </button>
+                    </div>
+                    <p class="text-[11px] text-app-faint">Les colis fragiles entraînent un supplément de prix.</p>
+                  </div>
+
                   <div class="flex flex-col gap-1.5">
                     <label class="field-label">Instructions spéciales</label>
                     <textarea
@@ -584,59 +619,19 @@ onMounted(fetchPackages)
                   </div>
 
                   <!-- Images -->
-                  <div class="flex flex-col gap-2">
+                  <div class="flex flex-col gap-1.5">
                     <label class="field-label">Photos du colis *</label>
-                    <p class="text-xs text-app-muted -mt-1">La première photo est obligatoire.</p>
+                    <p class="text-xs text-app-muted -mt-0.5">La première photo est obligatoire.</p>
                     <div class="grid grid-cols-2 gap-2.5">
-                      <div
-                        v-for="(_, idx) in images"
-                        :key="idx"
-                        class="relative aspect-square rounded-[14px] overflow-hidden border-2 transition-colors"
-                        :class="idx === 0 && !images[0]
-                          ? 'border-dashed border-red-400/50 bg-red-500/5'
-                          : images[idx]
-                          ? 'border-[var(--primary-50)] bg-transparent'
-                          : 'border-dashed border-[var(--glass-border)] bg-white/[0.03]'"
-                      >
-                        <!-- Preview -->
-                        <img
-                          v-if="previews[idx]"
-                          :src="previews[idx]!"
-                          class="w-full h-full object-cover"
-                        />
-
-                        <!-- Placeholder -->
-                        <div
-                          v-else
-                          class="absolute inset-0 flex flex-col items-center justify-center gap-1"
-                        >
-                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint">
-                            <rect x="3" y="3" width="18" height="18" rx="2"/>
-                            <circle cx="8.5" cy="8.5" r="1.5"/>
-                            <polyline points="21 15 16 10 5 21"/>
-                          </svg>
-                          <span class="text-[11px] text-app-faint">{{ idx === 0 ? 'Photo 1 *' : `Photo ${idx + 1}` }}</span>
-                        </div>
-
-                        <!-- Remove button -->
-                        <button
-                          v-if="images[idx]"
-                          class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center text-white cursor-pointer border-none"
-                          @click.prevent="removeImage(idx)"
-                        >
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-                            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                          </svg>
-                        </button>
-
-                        <!-- Clickable input -->
-                        <input
-                          type="file"
-                          accept="image/*"
-                          class="absolute inset-0 opacity-0 cursor-pointer"
-                          @change="handleImagePick(idx, $event)"
-                        />
-                      </div>
+                      <ImagePicker
+                        v-for="i in 4"
+                        :key="i"
+                        :model-value="imgFiles[i - 1]"
+                        :required="i === 1"
+                        :label="`Photo ${i}${i === 1 ? ' *' : ''}`"
+                        :disabled="formLoading"
+                        @update:model-value="updateImgFile(i - 1, $event)"
+                      />
                     </div>
                   </div>
 
@@ -779,11 +774,11 @@ onMounted(fetchPackages)
                     <p class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.05em]">Photos</p>
                     <div class="flex gap-2">
                       <div
-                        v-for="(preview, idx) in previews.filter(Boolean)"
+                        v-for="(url, idx) in imgPreviews.filter(Boolean)"
                         :key="idx"
                         class="w-16 h-16 rounded-[10px] overflow-hidden border border-[var(--glass-border)] shrink-0"
                       >
-                        <img :src="preview!" class="w-full h-full object-cover" />
+                        <img :src="url!" class="w-full h-full object-cover" />
                       </div>
                     </div>
                   </div>

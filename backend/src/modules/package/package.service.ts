@@ -1,5 +1,7 @@
+import fs from 'fs';
+import path from 'path';
 import { Op } from 'sequelize';
-import { Package, PackageStatus } from '../../models/Package.model';
+import { Package, PackageStatus, FragilityLevel, FRAGILITY_MULTIPLIER } from '../../models/Package.model';
 import { Travel, TravelStatus, TransportType } from '../../models/Travel.model';
 import { Recipient } from '../../models/Recipient.model';
 import { User, UserRole } from '../../models/User.model';
@@ -17,7 +19,7 @@ const RECIPIENT_ATTRS = [
 ];
 const TRAVEL_ATTRS = [
   'travel_id', 'status', 'transport_type', 'origin_country_id', 'destination_country_id',
-  'itinerary', 'departure_date', 'estimated_arrival_date',
+  'itinerary', 'departure_date', 'estimated_arrival_date', 'price_per_unit',
 ];
 const CLIENT_ATTRS = [
   'user_id', 'first_name', 'last_name', 'email', 'phone', 'city', 'country',
@@ -69,6 +71,7 @@ export class PackageService {
       volume: data.volume,
       tracking_number: `PKG-${clientId}-${Date.now()}`,
       declared_value: data.declared_value,
+      fragility: (data.fragility as FragilityLevel) ?? FragilityLevel.NORMAL,
       special_instructions: data.special_instructions ?? null,
       image1: data.image1,
       image2: data.image2 ?? null,
@@ -140,7 +143,8 @@ export class PackageService {
 
     const { travel, load } = await this.checkCapacity(pkg.travel_id!, Number(pkg.weight), Number(pkg.volume));
 
-    await pkg.update({ status: PackageStatus.IN_TRAVEL });
+    const computedPrice = this.computePrice(travel, pkg);
+    await pkg.update({ status: PackageStatus.IN_TRAVEL, price: computedPrice });
     await this.updateTravelStatusAfterAdd(travel, load, Number(pkg.weight), Number(pkg.volume));
 
     await this.notify(
@@ -182,10 +186,33 @@ export class PackageService {
     if (data.weight !== undefined)         patch.weight = data.weight;
     if (data.volume !== undefined)         patch.volume = data.volume;
     if (data.declared_value !== undefined) patch.declared_value = data.declared_value;
+    if (data.fragility !== undefined)      patch.fragility = data.fragility;
     if ('special_instructions' in data)    patch.special_instructions = data.special_instructions ?? null;
     if (data.recipient_id !== undefined)   patch.recipient_id = data.recipient_id;
 
+    // Images — collect old paths to delete after update
+    const toDelete: string[] = [];
+    if (data.image1 !== undefined) {
+      if (pkg.image1) toDelete.push(pkg.image1);
+      patch.image1 = data.image1;
+    }
+    if ('image2' in data) {
+      if (pkg.image2) toDelete.push(pkg.image2);
+      patch.image2 = data.image2 ?? null;
+    }
+    if ('image3' in data) {
+      if (pkg.image3) toDelete.push(pkg.image3);
+      patch.image3 = data.image3 ?? null;
+    }
+    if ('image4' in data) {
+      if (pkg.image4) toDelete.push(pkg.image4);
+      patch.image4 = data.image4 ?? null;
+    }
+
     await pkg.update(patch);
+
+    // Asynchronously clean up replaced/removed files (don't block response)
+    this.deleteOldFiles(toDelete);
 
     return pkg.reload({
       include: [
@@ -446,10 +473,26 @@ export class PackageService {
     }
   }
 
+  private computePrice(travel: Travel, pkg: Package): number | null {
+    if (!travel.price_per_unit) return null;
+    const base = travel.transport_type === TransportType.PLANE
+      ? Number(travel.price_per_unit) * Number(pkg.weight)
+      : Number(travel.price_per_unit) * Number(pkg.volume);
+    const multiplier = FRAGILITY_MULTIPLIER[pkg.fragility] ?? 1;
+    return Math.round(base * multiplier * 100) / 100;
+  }
+
   private async findOwnedPackage(packageId: number, clientId: number): Promise<Package> {
     const pkg = await Package.findOne({ where: { package_id: packageId, client_id: clientId } });
     if (!pkg) throw new AppError(404, 'Package not found');
     return pkg;
+  }
+
+  private deleteOldFiles(paths: string[]): void {
+    for (const p of paths) {
+      const fullPath = path.join(process.cwd(), p);
+      fs.unlink(fullPath, () => {}); // ignore errors (file may have already been removed)
+    }
   }
 
   private async notify(userId: number, title: string, content: string): Promise<void> {

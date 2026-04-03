@@ -26,6 +26,7 @@ export interface TravelAttributes {
   max_volume: number;
   min_load_percentage: number;
   max_load_percentage: number;
+  price_per_unit: number | null;
   creation_date: Date;
   departure_date: Date | null;
   estimated_arrival_date: Date | null;
@@ -38,6 +39,7 @@ export interface TravelCreationAttributes
     | 'status'
     | 'itinerary'
     | 'container'
+    | 'price_per_unit'
     | 'creation_date'
     | 'departure_date'
     | 'estimated_arrival_date'
@@ -56,6 +58,7 @@ export class Travel extends Model<TravelAttributes, TravelCreationAttributes> {
   declare max_volume: number;
   declare min_load_percentage: number;
   declare max_load_percentage: number;
+  declare price_per_unit: number | null;
   declare creation_date: Date;
   declare departure_date: Date | null;
   declare estimated_arrival_date: Date | null;
@@ -121,6 +124,11 @@ export class Travel extends Model<TravelAttributes, TravelCreationAttributes> {
         max_load_percentage: {
           type: DataTypes.TINYINT.UNSIGNED,
           allowNull: false,
+        },
+        price_per_unit: {
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: true,
+          comment: 'Price per kg (plane) or per m³ (ship)',
         },
         creation_date: {
           type: DataTypes.DATE,

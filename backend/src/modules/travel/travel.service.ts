@@ -65,6 +65,7 @@ export class TravelService {
       max_volume: data.max_volume,
       min_load_percentage: data.min_load_percentage,
       max_load_percentage: data.max_load_percentage,
+      price_per_unit: data.price_per_unit ?? null,
       container: data.container ?? null,
       departure_date: data.departure_date ? new Date(data.departure_date) : null,
       estimated_arrival_date: data.estimated_arrival_date ? new Date(data.estimated_arrival_date) : null,
@@ -87,7 +88,10 @@ export class TravelService {
       where.created_by = caller.userId;
     }
 
-    if (filters.status) {
+    if (caller.role === UserRole.CLIENT) {
+      // Les clients ne voient jamais les voyages annulés
+      where.status = { [Op.ne]: TravelStatus.CANCELLED };
+    } else if (filters.status) {
       if (!Object.values(TravelStatus).includes(filters.status as TravelStatus)) {
         throw new AppError(400, `Invalid status filter: ${filters.status}`);
       }
@@ -174,6 +178,7 @@ export class TravelService {
     if (data.max_volume !== undefined)          patch.max_volume = data.max_volume;
     if (data.min_load_percentage !== undefined) patch.min_load_percentage = data.min_load_percentage;
     if (data.max_load_percentage !== undefined) patch.max_load_percentage = data.max_load_percentage;
+    if ('price_per_unit' in data)               patch.price_per_unit = data.price_per_unit ?? null;
     if ('departure_date' in data)
       patch.departure_date = data.departure_date ? new Date(data.departure_date) : null;
     if ('estimated_arrival_date' in data)
@@ -211,6 +216,10 @@ export class TravelService {
       if (!travel.container)      throw new AppError(400, 'Assign a container before moving to in_transit');
     }
 
+    if (next === TravelStatus.CANCELLED) {
+      await this.handleCancellation(travelId, dto.target_travel_id);
+    }
+
     await travel.update({ status: next });
 
     // Message système dans le forum du voyage
@@ -226,6 +235,69 @@ export class TravelService {
     await this.notifyTravelClients(travelId, STATUS_MESSAGES[next]);
 
     return travel;
+  }
+
+  private async handleCancellation(travelId: number, targetTravelId?: number): Promise<void> {
+    // 1. Vérifier les colis engagés (in_travel)
+    const inTravel = await Package.findAll({
+      where: { travel_id: travelId, status: PackageStatus.IN_TRAVEL },
+      attributes: ['package_id', 'client_id', 'tracking_number'],
+    });
+
+    if (inTravel.length > 0) {
+      if (!targetTravelId) {
+        throw new AppError(
+          409,
+          `Ce voyage contient ${inTravel.length} colis engagé${inTravel.length > 1 ? 's' : ''}. ` +
+          `Choisissez un autre voyage pour les déplacer avant d'annuler.`,
+        );
+      }
+      const target = await Travel.findByPk(targetTravelId);
+      if (!target) throw new AppError(404, `Voyage cible #${targetTravelId} introuvable`);
+      if (target.status !== TravelStatus.OPEN && target.status !== TravelStatus.FULL) {
+        throw new AppError(400, 'Le voyage cible doit être ouvert');
+      }
+
+      await Package.update(
+        { travel_id: targetTravelId },
+        { where: { travel_id: travelId, status: PackageStatus.IN_TRAVEL } },
+      );
+
+      await Promise.all(
+        inTravel.map((pkg) =>
+          createAndPush(
+            pkg.client_id,
+            'Voyage annulé — colis déplacé',
+            `Le voyage #${travelId} a été annulé. Votre colis ${pkg.tracking_number} ` +
+            `a été transféré vers le voyage #${targetTravelId}.`,
+          ),
+        ),
+      );
+    }
+
+    // 2. Remettre les colis soumis (submitted) en attente
+    const submitted = await Package.findAll({
+      where: { travel_id: travelId, status: PackageStatus.SUBMITTED },
+      attributes: ['package_id', 'client_id', 'tracking_number'],
+    });
+
+    if (submitted.length > 0) {
+      await Package.update(
+        { travel_id: null, status: PackageStatus.PENDING },
+        { where: { travel_id: travelId, status: PackageStatus.SUBMITTED } },
+      );
+
+      await Promise.all(
+        submitted.map((pkg) =>
+          createAndPush(
+            pkg.client_id,
+            'Voyage annulé',
+            `Le voyage #${travelId} a été annulé. Votre colis ${pkg.tracking_number} ` +
+            `repasse en attente — vous pouvez le soumettre à un autre voyage.`,
+          ),
+        ),
+      );
+    }
   }
 
   private async notifyTravelClients(travelId: number, content: string): Promise<void> {

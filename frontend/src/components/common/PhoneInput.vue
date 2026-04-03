@@ -153,7 +153,7 @@ function onBlur() {
 
 /* ── Dropdown list ───────────────────────────────────────────────────────── */
 :deep(.vti__dropdown-list) {
-  background: var(--glass-bg, rgba(20, 20, 30, 0.97));
+  /* background: var(--glass-bg, rgba(20, 20, 30, 0.97)); */
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);

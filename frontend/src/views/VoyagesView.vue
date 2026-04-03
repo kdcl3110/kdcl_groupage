@@ -9,6 +9,7 @@ import ErrorAlert from '@/components/common/ErrorAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import RefreshButton from '@/components/common/RefreshButton.vue'
 import FloatingActionButton from '@/components/common/FloatingActionButton.vue'
+import { AlertCircle, Ship } from 'lucide-vue-next'
 import { travelsApi } from '@/api/travels'
 import { packagesApi } from '@/api/packages'
 import { countriesApi } from '@/api/countries'
@@ -145,6 +146,7 @@ const form = reactive({
   estimated_arrival_date: '',
   max_weight: '',
   max_volume: '',
+  price_per_unit: '',
   itinerary: '',
   container: '',
   min_load_percentage: '0',
@@ -165,6 +167,7 @@ function resetForm() {
   form.estimated_arrival_date = ''
   form.max_weight = ''
   form.max_volume = ''
+  form.price_per_unit = ''
   form.itinerary = ''
   form.container = ''
   form.min_load_percentage = '0'
@@ -219,6 +222,7 @@ async function handleCreate() {
     }
     if (form.departure_date) payload.departure_date = form.departure_date
     if (form.estimated_arrival_date) payload.estimated_arrival_date = form.estimated_arrival_date
+    if (form.price_per_unit && parseFloat(form.price_per_unit) > 0) payload.price_per_unit = parseFloat(form.price_per_unit)
     if (form.itinerary.trim()) payload.itinerary = form.itinerary.trim()
     if (form.container.trim()) payload.container = form.container.trim()
 
@@ -283,7 +287,8 @@ onMounted(fetchTravels)
       </div>
 
       <!-- Error -->
-      <EmptyState v-else-if="error" icon="⚠️" title="Erreur de chargement" :message="error">
+      <EmptyState v-else-if="error" title="Erreur de chargement" :message="error">
+        <template #icon><AlertCircle :size="40" /></template>
         <AppButton variant="outline" class="mt-1" @click="fetchTravels">Réessayer</AppButton>
       </EmptyState>
 
@@ -294,7 +299,9 @@ onMounted(fetchTravels)
         :message="isManager
           ? (activeFilter === 'all' ? 'Aucun voyage disponible pour le moment.' : 'Aucun voyage avec ce statut.')
           : (clientFilter === 'all' ? 'Aucun voyage disponible pour le moment.' : 'Aucun voyage correspondant à ce filtre.')"
-      />
+      >
+        <template #icon><Ship :size="40" /></template>
+      </EmptyState>
 
       <!-- List -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -423,6 +430,27 @@ onMounted(fetchTravels)
                       placeholder="Ex: 20"
                     />
                   </div>
+                </div>
+
+                <!-- Price per unit -->
+                <div class="flex flex-col gap-2">
+                  <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">
+                    Prix par {{ form.transport_type === 'plane' ? 'kg' : 'm³' }} (€)
+                  </label>
+                  <div class="relative">
+                    <input
+                      v-model="form.price_per_unit"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      class="input-field pr-10"
+                      :placeholder="form.transport_type === 'plane' ? 'Ex: 8.50' : 'Ex: 120'"
+                    />
+                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-app-faint pointer-events-none">€</span>
+                  </div>
+                  <p class="text-[11px] text-app-faint">
+                    Laissez vide si le prix n'est pas encore défini. Le prix final du colis sera calculé à sa validation.
+                  </p>
                 </div>
 
                 <!-- Itinerary -->

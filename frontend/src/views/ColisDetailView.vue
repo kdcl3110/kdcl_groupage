@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, reactive } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
+import ErrorAlert from '@/components/common/ErrorAlert.vue'
+import AppButton from '@/components/common/AppButton.vue'
+import ImagePicker from '@/components/common/ImagePicker.vue'
 import { packagesApi } from '@/api/packages'
 import { recipientsApi } from '@/api/recipients'
 import { travelsApi } from '@/api/travels'
@@ -61,6 +64,7 @@ const currentStepIndex = computed(() => {
 const canCancel = computed(() =>
   pkg.value?.status === 'pending' || pkg.value?.status === 'submitted'
 )
+const canEdit = computed(() => pkg.value?.status === 'pending')
 const toast = useToastStore()
 
 const displayStatus = computed(() => pkg.value?.status ?? '')
@@ -165,6 +169,141 @@ async function handleSubmit(travelId: number) {
     submitLoading.value = null
   }
 }
+
+// ─── Edit sheet ───────────────────────────────────────────────────────────────
+const showEditSheet = ref(false)
+const editLoading = ref(false)
+const editError = ref('')
+const editForm = reactive({
+  description: '',
+  weight: '',
+  volume: '',
+  declared_value: '',
+  special_instructions: '',
+})
+const editRecipients = ref<Recipient[]>([])
+const editRecipientsLoading = ref(false)
+const editSelectedRecipient = ref<Recipient | null>(null)
+
+// Images for edit form
+const editExistingImages = ref<(string | null)[]>([null, null, null, null])
+const editImgFiles       = ref<(File | null)[]>([null, null, null, null])
+const editImgRemoved     = ref<boolean[]>([false, false, false, false])
+const editHasImage1      = computed(() =>
+  !!editImgFiles.value[0] || (!editImgRemoved.value[0] && !!editExistingImages.value[0])
+)
+
+async function openEditSheet() {
+  if (!pkg.value) return
+  editForm.description = pkg.value.description
+  editForm.weight = String(pkg.value.weight)
+  editForm.volume = String(pkg.value.volume)
+  editForm.declared_value = String(pkg.value.declared_value)
+  editForm.special_instructions = pkg.value.special_instructions ?? ''
+  editSelectedRecipient.value = recipient.value
+  editError.value = ''
+  // Set existing images BEFORE showing — ImagePicker will mount with correct prop
+  editExistingImages.value = [
+    pkg.value.image1 ?? null,
+    pkg.value.image2 ?? null,
+    pkg.value.image3 ?? null,
+    pkg.value.image4 ?? null,
+  ]
+  editImgFiles.value   = [null, null, null, null]
+  editImgRemoved.value = [false, false, false, false]
+  showEditSheet.value = true
+  editRecipientsLoading.value = true
+  try {
+    const { data } = await recipientsApi.getAll()
+    editRecipients.value = data
+  } catch {
+    // non-blocking
+  } finally {
+    editRecipientsLoading.value = false
+  }
+}
+
+async function handleEditSubmit() {
+  editError.value = ''
+  if (!editForm.description.trim()) {
+    editError.value = 'La description est requise.'
+    return
+  }
+  if (parseFloat(editForm.weight) <= 0) {
+    editError.value = 'Le poids doit être un nombre positif.'
+    return
+  }
+  if (parseFloat(editForm.volume) <= 0) {
+    editError.value = 'Le volume doit être un nombre positif.'
+    return
+  }
+  if (parseFloat(editForm.declared_value) < 0) {
+    editError.value = 'La valeur déclarée doit être positive ou nulle.'
+    return
+  }
+  if (!editHasImage1.value) {
+    editError.value = 'La première photo est obligatoire.'
+    return
+  }
+  editLoading.value = true
+  try {
+    const fd = new FormData()
+    fd.append('description', editForm.description)
+    fd.append('weight', editForm.weight)
+    fd.append('volume', editForm.volume)
+    fd.append('declared_value', editForm.declared_value)
+    fd.append('special_instructions', editForm.special_instructions)
+    if (editSelectedRecipient.value) {
+      fd.append('recipient_id', String(editSelectedRecipient.value.recipient_id))
+    }
+    // Images
+    for (let i = 0; i < 4; i++) {
+      const field = `image${i + 1}`
+      if (editImgFiles.value[i]) {
+        fd.append(field, editImgFiles.value[i]!)
+      } else if (i > 0 && editImgRemoved.value[i]) {
+        fd.append(`remove_${field}`, 'true')
+      }
+    }
+    const { data } = await packagesApi.update(packageId.value, fd)
+    pkg.value = data
+    if (editSelectedRecipient.value) recipient.value = editSelectedRecipient.value
+    showEditSheet.value = false
+    toast.success('Colis modifié avec succès.')
+  } catch (err) {
+    editError.value = apiError(err, 'Erreur lors de la modification du colis.')
+  } finally {
+    editLoading.value = false
+  }
+}
+
+const FRAGILITY_LABEL: Record<string, string> = {
+  normal:       'Normal',
+  fragile:      'Fragile',
+  tres_fragile: 'Très fragile',
+}
+const FRAGILITY_MULTIPLIER: Record<string, number> = {
+  normal: 1, fragile: 1.2, tres_fragile: 1.5,
+}
+
+const fragilityLabel = computed(() => FRAGILITY_LABEL[pkg.value?.fragility ?? 'normal'] ?? 'Normal')
+
+// Prix estimé (colis soumis, voyage avec price_per_unit)
+const estimatedPrice = computed(() => {
+  if (!pkg.value || !travel.value || !travel.value.price_per_unit) return null
+  const base = travel.value.transport_type === 'plane'
+    ? Number(travel.value.price_per_unit) * Number(pkg.value.weight)
+    : Number(travel.value.price_per_unit) * Number(pkg.value.volume)
+  const mult = FRAGILITY_MULTIPLIER[pkg.value.fragility] ?? 1
+  return Math.round(base * mult * 100) / 100
+})
+
+// Prix à afficher : confirmé si disponible, sinon estimé
+const displayPrice = computed(() => {
+  if (pkg.value?.price != null) return { value: pkg.value.price, confirmed: true }
+  if (estimatedPrice.value != null) return { value: estimatedPrice.value, confirmed: false }
+  return null
+})
 
 onMounted(fetchData)
 </script>
@@ -360,10 +499,31 @@ onMounted(fetchData)
                 <span class="text-[14px] font-bold text-app-primary">{{ pkg.declared_value }} €</span>
               </div>
               <div class="flex flex-col gap-0.5">
+                <span class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Fragilité</span>
+                <span class="text-[14px] font-bold text-app-primary">{{ fragilityLabel }}</span>
+              </div>
+              <div class="flex flex-col gap-0.5">
                 <span class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Créé le</span>
                 <span class="text-[14px] font-bold text-app-primary">{{ formatDate(pkg.creation_date) }}</span>
               </div>
             </div>
+
+            <!-- Prix -->
+            <div v-if="displayPrice" class="pt-3 border-t border-[var(--glass-border)]">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">
+                  {{ displayPrice.confirmed ? 'Prix du voyage' : 'Prix estimé' }}
+                </span>
+                <span v-if="!displayPrice.confirmed" class="text-[10px] text-amber-400 font-semibold">En attente de validation</span>
+              </div>
+              <p class="text-[22px] font-extrabold mt-1" :class="displayPrice.confirmed ? 'text-app-primary' : 'text-amber-400'">
+                {{ displayPrice.value.toFixed(2) }} €
+              </p>
+              <p v-if="!displayPrice.confirmed" class="text-[11px] text-app-faint mt-0.5">
+                Calculé d'après le tarif du voyage · Peut varier légèrement
+              </p>
+            </div>
+
             <div v-if="pkg.special_instructions" class="pt-3 border-t border-[var(--glass-border)] flex flex-col gap-1">
               <span class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Instructions spéciales</span>
               <p class="text-[13px] text-app-muted italic leading-snug">{{ pkg.special_instructions }}</p>
@@ -460,6 +620,19 @@ onMounted(fetchData)
             </button>
           </div>
 
+          <!-- EDIT BUTTON -->
+          <button
+            v-if="canEdit"
+            @click="openEditSheet"
+            class="w-full flex items-center justify-center gap-2 py-[14px] rounded-[20px] glass border-[1.5px] border-[var(--primary-30)] text-[var(--primary)] text-[15px] font-semibold cursor-pointer transition-colors active:bg-[var(--primary-10)]"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Modifier le colis
+          </button>
+
           <!-- CANCEL BUTTON -->
           <button
             v-if="canCancel"
@@ -551,6 +724,127 @@ onMounted(fetchData)
                       </svg>
                     </div>
                   </button>
+                </div>
+              </div>
+            </Transition>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- EDIT SHEET -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div
+            v-if="showEditSheet"
+            class="overlay flex items-end md:items-center justify-center"
+            @click.self="showEditSheet = false"
+          >
+            <Transition name="slide-up">
+              <div v-if="showEditSheet" class="sheet w-full max-w-[480px] md:rounded-3xl rounded-t-3xl flex flex-col" style="max-height: 92dvh;">
+                <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
+                <div class="flex items-center justify-between px-5 py-4 shrink-0">
+                  <h2 class="text-[17px] font-extrabold text-app-primary">Modifier le colis</h2>
+                  <button
+                    class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none text-lg leading-none"
+                    @click="showEditSheet = false"
+                  >×</button>
+                </div>
+                <div class="border-t border-[var(--glass-border)] shrink-0" />
+
+                <div class="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-4">
+
+                  <!-- Description -->
+                  <div class="flex flex-col gap-1.5">
+                    <label class="field-label">Description *</label>
+                    <input v-model="editForm.description" type="text" class="input-field" placeholder="Ex: Vêtements, électronique..." :disabled="editLoading" />
+                  </div>
+
+                  <!-- Poids / Volume -->
+                  <div class="grid grid-cols-2 gap-3">
+                    <div class="flex flex-col gap-1.5">
+                      <label class="field-label">Poids (kg) *</label>
+                      <input v-model="editForm.weight" type="number" step="0.1" min="0.01" class="input-field" placeholder="0.0" :disabled="editLoading" />
+                    </div>
+                    <div class="flex flex-col gap-1.5">
+                      <label class="field-label">Volume (m³) *</label>
+                      <input v-model="editForm.volume" type="number" step="0.001" min="0.001" class="input-field" placeholder="0.000" :disabled="editLoading" />
+                    </div>
+                  </div>
+
+                  <!-- Valeur déclarée -->
+                  <div class="flex flex-col gap-1.5">
+                    <label class="field-label">Valeur déclarée (€) *</label>
+                    <input v-model="editForm.declared_value" type="number" min="0" class="input-field" placeholder="0" :disabled="editLoading" />
+                  </div>
+
+                  <!-- Instructions spéciales -->
+                  <div class="flex flex-col gap-1.5">
+                    <label class="field-label">Instructions spéciales</label>
+                    <textarea
+                      v-model="editForm.special_instructions"
+                      class="input-field"
+                      style="min-height: 72px; resize: none;"
+                      placeholder="Fragile, température contrôlée..."
+                      :disabled="editLoading"
+                    />
+                  </div>
+
+                  <!-- Photos -->
+                  <div class="flex flex-col gap-1.5">
+                    <label class="field-label">Photos du colis</label>
+                    <p class="text-xs text-app-muted -mt-0.5">La première photo est obligatoire.</p>
+                    <div class="grid grid-cols-2 gap-2.5">
+                      <ImagePicker
+                        v-for="i in 4"
+                        :key="i"
+                        :model-value="editImgFiles[i - 1]"
+                        :existing="editExistingImages[i - 1]"
+                        :required="i === 1"
+                        :label="`Photo ${i}${i === 1 ? ' *' : ''}`"
+                        :disabled="editLoading"
+                        @update:model-value="editImgFiles[i - 1] = $event"
+                        @remove="editImgRemoved[i - 1] = true"
+                      />
+                    </div>
+                  </div>
+
+                  <!-- Destinataire -->
+                  <div class="flex flex-col gap-2">
+                    <label class="field-label">Destinataire</label>
+                    <div v-if="editRecipientsLoading" class="flex flex-col gap-2">
+                      <div v-for="i in 2" :key="i" class="skeleton h-[58px] rounded-[14px]" />
+                    </div>
+                    <div v-else class="flex flex-col gap-2 max-h-[200px] overflow-y-auto scrollbar-hide">
+                      <div
+                        v-for="r in editRecipients"
+                        :key="r.recipient_id"
+                        class="flex items-center gap-3 px-3.5 py-3 rounded-[14px] cursor-pointer transition-all border"
+                        :class="editSelectedRecipient?.recipient_id === r.recipient_id
+                          ? 'bg-[var(--primary-15)] border-[var(--primary)]'
+                          : 'glass-subtle border-transparent'"
+                        @click="editSelectedRecipient = r"
+                      >
+                        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary-30)] to-[var(--primary-15)] border border-[var(--primary-30)] flex items-center justify-center text-sm font-bold text-[var(--primary)] shrink-0">
+                          {{ r.first_name[0] }}{{ r.last_name[0] }}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                          <p class="text-sm font-semibold text-app-primary truncate">{{ r.first_name }} {{ r.last_name }}</p>
+                          <p class="text-xs text-app-muted">{{ r.city }}, {{ r.country }}</p>
+                        </div>
+                        <div v-if="editSelectedRecipient?.recipient_id === r.recipient_id" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="20 6 9 17 4 12"/>
+                          </svg>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <ErrorAlert :message="editError" />
+
+                  <AppButton :full="true" :loading="editLoading" loading-text="Enregistrement..." @click="handleEditSubmit">
+                    Enregistrer les modifications
+                  </AppButton>
                 </div>
               </div>
             </Transition>

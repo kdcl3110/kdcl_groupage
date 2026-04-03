@@ -32,6 +32,7 @@ export interface Travel {
   max_volume: number
   min_load_percentage: number
   max_load_percentage: number
+  price_per_unit: number | null
   creation_date: string
   departure_date: string | null
   estimated_arrival_date: string | null
@@ -66,6 +67,8 @@ export interface Package {
   volume: number
   declared_value: number
   status: 'pending' | 'submitted' | 'in_travel' | 'in_transit' | 'delivered' | 'returned' | 'cancelled'
+  fragility: 'normal' | 'fragile' | 'tres_fragile'
+  price: number | null
   special_instructions: string | null
   image1: string
   image2: string | null

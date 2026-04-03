@@ -9,6 +9,7 @@ export interface CreateTravelDto {
   max_volume: number;
   min_load_percentage: number;
   max_load_percentage: number;
+  price_per_unit?: number;          // €/kg (avion) ou €/m³ (bateau)
   container?: string;
   departure_date?: string;          // ISO 8601
   estimated_arrival_date?: string;  // ISO 8601
@@ -24,10 +25,12 @@ export interface UpdateTravelDto {
   max_volume?: number;
   min_load_percentage?: number;
   max_load_percentage?: number;
+  price_per_unit?: number | null;
   departure_date?: string | null;
   estimated_arrival_date?: string | null;
 }
 
 export interface UpdateTravelStatusDto {
   status: string;
+  target_travel_id?: number; // obligatoire si des colis in_travel existent lors d'une annulation
 }

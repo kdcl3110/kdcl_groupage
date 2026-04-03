@@ -8,6 +8,7 @@ import AppButton from '@/components/common/AppButton.vue'
 import RefreshButton from '@/components/common/RefreshButton.vue'
 import FloatingActionButton from '@/components/common/FloatingActionButton.vue'
 import PhoneInput from '@/components/common/PhoneInput.vue'
+import { AlertCircle, Users } from 'lucide-vue-next'
 import { recipientsApi } from '@/api/recipients'
 import type { Recipient } from '@/types'
 
@@ -149,12 +150,15 @@ onMounted(fetchRecipients)
       </div>
 
       <!-- Error -->
-      <EmptyState v-else-if="error" icon="⚠️" title="Erreur" :message="error">
+      <EmptyState v-else-if="error" title="Erreur" :message="error">
+        <template #icon><AlertCircle :size="40" /></template>
         <AppButton variant="outline" class="mt-1" @click="fetchRecipients">Réessayer</AppButton>
       </EmptyState>
 
       <!-- Empty -->
-      <EmptyState v-else-if="recipients.length === 0" icon="👥" title="Aucun destinataire" message="Ajoutez vos destinataires pour les associer à vos colis." />
+      <EmptyState v-else-if="recipients.length === 0" title="Aucun destinataire" message="Ajoutez vos destinataires pour les associer à vos colis.">
+        <template #icon><Users :size="40" /></template>
+      </EmptyState>
 
       <!-- List -->
       <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

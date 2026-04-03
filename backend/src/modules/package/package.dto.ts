@@ -5,6 +5,7 @@ export interface CreatePackageDto {
   weight: number;
   volume: number;
   declared_value: number;
+  fragility?: 'normal' | 'fragile' | 'tres_fragile';
   special_instructions?: string;
   tracking_number?: string;
 
@@ -22,8 +23,13 @@ export interface UpdatePackageDto {
   weight?: number;
   volume?: number;
   declared_value?: number;
+  fragility?: 'normal' | 'fragile' | 'tres_fragile';
   special_instructions?: string | null;
   recipient_id?: number;
+  image1?: string;
+  image2?: string | null;
+  image3?: string | null;
+  image4?: string | null;
 }
 
 export interface SubmitToTravelDto {

@@ -1,5 +1,17 @@
 import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
+export enum FragilityLevel {
+  NORMAL       = 'normal',
+  FRAGILE      = 'fragile',
+  TRES_FRAGILE = 'tres_fragile',
+}
+
+export const FRAGILITY_MULTIPLIER: Record<FragilityLevel, number> = {
+  [FragilityLevel.NORMAL]:       1.0,
+  [FragilityLevel.FRAGILE]:      1.2,
+  [FragilityLevel.TRES_FRAGILE]: 1.5,
+};
+
 export enum PackageStatus {
   PENDING   = 'pending',
   SUBMITTED = 'submitted',
@@ -21,6 +33,8 @@ export interface PackageAttributes {
   volume: number;
   declared_value: number;
   status: PackageStatus;
+  fragility: FragilityLevel;
+  price: number | null;
   special_instructions: string | null;
   image1: string;
   image2: string | null;
@@ -37,6 +51,8 @@ export interface PackageCreationAttributes
     | 'package_id'
     | 'travel_id'
     | 'tracking_number'
+    | 'fragility'
+    | 'price'
     | 'creation_date'
     | 'special_instructions'
     | 'image2'
@@ -57,6 +73,8 @@ export class Package extends Model<PackageAttributes, PackageCreationAttributes>
   declare volume: number;
   declare declared_value: number;
   declare status: PackageStatus;
+  declare fragility: FragilityLevel;
+  declare price: number | null;
   declare special_instructions: string | null;
   declare image1: string;
   declare image2: string | null;
@@ -119,6 +137,15 @@ export class Package extends Model<PackageAttributes, PackageCreationAttributes>
           type: DataTypes.ENUM(...Object.values(PackageStatus)),
           allowNull: false,
           defaultValue: PackageStatus.PENDING,
+        },
+        fragility: {
+          type: DataTypes.ENUM(...Object.values(FragilityLevel)),
+          allowNull: false,
+          defaultValue: FragilityLevel.NORMAL,
+        },
+        price: {
+          type: DataTypes.DECIMAL(10, 2),
+          allowNull: true,
         },
         special_instructions: {
           type: DataTypes.TEXT,

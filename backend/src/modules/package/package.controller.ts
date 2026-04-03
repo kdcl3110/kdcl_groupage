@@ -18,6 +18,7 @@ export async function createPackage(req: AuthRequest, res: Response, next: NextF
       weight: parseFloat(req.body.weight),
       volume: parseFloat(req.body.volume),
       declared_value: parseFloat(req.body.declared_value),
+      fragility: req.body.fragility || undefined,
       special_instructions: req.body.special_instructions || undefined,
       travel_id: req.body.travel_id ? Number(req.body.travel_id) : undefined,
       image1: extractFilePath(files, 'image1')!,
@@ -43,7 +44,32 @@ export async function submitToTravel(req: AuthRequest, res: Response, next: Next
 
 export async function updatePackage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const pkg = await service.update(Number(req.params.id), req.user!.user_id, req.body);
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
+    const b = req.body;
+
+    const dto: import('./package.dto').UpdatePackageDto = {};
+    if (b.description     !== undefined) dto.description     = b.description;
+    if (b.weight          !== undefined) dto.weight          = parseFloat(b.weight);
+    if (b.volume          !== undefined) dto.volume          = parseFloat(b.volume);
+    if (b.declared_value  !== undefined) dto.declared_value  = parseFloat(b.declared_value);
+    if (b.fragility       !== undefined) dto.fragility       = b.fragility;
+    if (b.recipient_id    !== undefined) dto.recipient_id    = Number(b.recipient_id);
+    if ('special_instructions' in b)     dto.special_instructions = b.special_instructions || null;
+
+    const img1 = extractFilePath(files, 'image1');
+    const img2 = extractFilePath(files, 'image2');
+    const img3 = extractFilePath(files, 'image3');
+    const img4 = extractFilePath(files, 'image4');
+
+    if (img1)                               dto.image1 = img1;
+    if (img2)                               dto.image2 = img2;
+    else if (b.remove_image2 === 'true')    dto.image2 = null;
+    if (img3)                               dto.image3 = img3;
+    else if (b.remove_image3 === 'true')    dto.image3 = null;
+    if (img4)                               dto.image4 = img4;
+    else if (b.remove_image4 === 'true')    dto.image4 = null;
+
+    const pkg = await service.update(Number(req.params.id), req.user!.user_id, dto);
     res.status(200).json(pkg);
   } catch (error) {
     next(error);
