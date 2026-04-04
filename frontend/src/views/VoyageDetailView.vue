@@ -9,6 +9,7 @@ import { packagesApi } from '@/api/packages'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore, apiError } from '@/stores/toast'
 import type { Travel, Package } from '@/types'
+import type { TravelCreator } from '@/types'
 
 
 
@@ -298,6 +299,22 @@ const transportLabel = computed(() => {
   return travel.value.transport_type === 'ship' ? 'Maritime' : 'Aérien'
 })
 
+function creatorInitials(c: TravelCreator) {
+  return `${c.first_name[0]}${c.last_name[0]}`.toUpperCase()
+}
+
+function shareTravel() {
+  if (!travel.value) return
+  const url = `${window.location.origin}/voyages/${travel.value.travel_id}`
+  const title = `Voyage ${travel.value.origin.name} → ${travel.value.destination.name}`
+  if (navigator.share) {
+    navigator.share({ title, url }).catch(() => {})
+  } else {
+    navigator.clipboard.writeText(url)
+    toast.success('Lien copié dans le presse-papier.')
+  }
+}
+
 async function fetchData() {
   loading.value = true
   error.value = ''
@@ -370,6 +387,17 @@ onMounted(fetchData)
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <StatusBadge :status="travel.status" />
+              <!-- Bouton partager -->
+              <button
+                class="w-8 h-8 rounded-full glass flex items-center justify-center cursor-pointer border-none text-app-muted transition-colors hover:text-app-primary shrink-0"
+                @click="shareTravel"
+                aria-label="Partager ce voyage"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+                  <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -428,6 +456,37 @@ onMounted(fetchData)
               Restant : <strong class="text-app-primary">{{ travel.remaining_weight.toFixed(1) }} kg</strong>
             </template>
           </div>
+        </div>
+
+        <!-- Carte groupeur (clients uniquement) -->
+        <div
+          v-if="isClient && travel.creator"
+          class="glass rounded-[20px] p-4 flex items-center gap-3.5 cursor-pointer transition-colors active:bg-[var(--glass-bg)]"
+          @click="router.push(`/groupeur/${travel.creator.user_id}`)"
+        >
+          <!-- Avatar -->
+          <div class="w-12 h-12 rounded-full overflow-hidden shrink-0 border border-white/10">
+            <img
+              v-if="(travel.creator as any).profile_picture"
+              :src="(travel.creator as any).profile_picture"
+              alt="Avatar"
+              class="w-full h-full object-cover"
+            />
+            <div
+              v-else
+              class="w-full h-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] flex items-center justify-center"
+            >
+              <span class="text-base font-bold text-white">{{ creatorInitials(travel.creator) }}</span>
+            </div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="text-[11px] font-medium text-app-muted uppercase tracking-[0.05em]">Transitaire</p>
+            <p class="text-[15px] font-bold text-app-primary truncate">{{ travel.creator.first_name }} {{ travel.creator.last_name }}</p>
+            <p class="text-[12px] text-app-muted truncate">{{ travel.creator.phone }}</p>
+          </div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint shrink-0">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
         </div>
 
         <!-- Forum button -->

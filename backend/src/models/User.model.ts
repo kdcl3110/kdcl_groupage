@@ -27,6 +27,11 @@ export interface UserAttributes {
   status: UserStatus;
   registration_date: Date;
   pdf_file: string | null;
+  profile_picture: string | null;
+  phone_verified: boolean;
+  email_verified: boolean;
+  email_verification_token: string | null;
+  email_verification_expires: Date | null;
   reset_password_token: string | null;
   reset_password_expires: Date | null;
 }
@@ -37,6 +42,11 @@ export interface UserCreationAttributes
     | 'user_id'
     | 'registration_date'
     | 'pdf_file'
+    | 'profile_picture'
+    | 'phone_verified'
+    | 'email_verified'
+    | 'email_verification_token'
+    | 'email_verification_expires'
     | 'status'
     | 'postal_code'
     | 'reset_password_token'
@@ -58,6 +68,11 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
   declare status: UserStatus;
   declare registration_date: Date;
   declare pdf_file: string | null;
+  declare profile_picture: string | null;
+  declare phone_verified: boolean;
+  declare email_verified: boolean;
+  declare email_verification_token: string | null;
+  declare email_verification_expires: Date | null;
   declare reset_password_token: string | null;
   declare reset_password_expires: Date | null;
 
@@ -127,6 +142,28 @@ export class User extends Model<UserAttributes, UserCreationAttributes> {
         },
         pdf_file: {
           type: DataTypes.STRING(255),
+          allowNull: true,
+        },
+        profile_picture: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+        },
+        phone_verified: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        email_verified: {
+          type: DataTypes.BOOLEAN,
+          allowNull: false,
+          defaultValue: false,
+        },
+        email_verification_token: {
+          type: DataTypes.STRING(255),
+          allowNull: true,
+        },
+        email_verification_expires: {
+          type: DataTypes.DATE,
           allowNull: true,
         },
         reset_password_token: {

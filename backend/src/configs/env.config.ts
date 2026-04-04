@@ -37,6 +37,15 @@ export const env = {
     max: parseInt(process.env.RATE_LIMIT_MAX ?? '100', 10),
   },
 
+  resend: {
+    apiKey:    requireEnv('RESEND_API_KEY'),
+    fromEmail: process.env.RESEND_FROM_EMAIL ?? 'noreply@kdcl-groupage.com',
+  },
+
+  app: {
+    frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+  },
+
   isDev(): boolean {
     return this.NODE_ENV === 'development';
   },

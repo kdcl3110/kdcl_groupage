@@ -11,6 +11,7 @@ import AppButton from '@/components/common/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { authApi } from '@/api/auth'
+import { usersApi } from '@/api/users'
 import { useToastStore, apiError } from '@/stores/toast'
 
 const router = useRouter()
@@ -20,11 +21,60 @@ const themeStore = useThemeStore()
 const toast = useToastStore()
 const showLogoutDialog = ref(false)
 
+// ── Avatar ──────────────────────────────────────────────────────────────────
+const avatarInput = ref<HTMLInputElement | null>(null)
+const avatarLoading = ref(false)
+
+async function handleAvatarChange(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  avatarLoading.value = true
+  try {
+    const { data } = await usersApi.uploadAvatar(file)
+    auth.updateUser({ ...auth.user!, profile_picture: data.profile_picture })
+    toast.success('Photo mise à jour.')
+  } catch (err) {
+    toast.error(apiError(err, 'Impossible de mettre à jour la photo.'))
+  } finally {
+    avatarLoading.value = false
+    if (avatarInput.value) avatarInput.value.value = ''
+  }
+}
+
+async function handleDeleteAvatar() {
+  avatarLoading.value = true
+  try {
+    await usersApi.deleteAvatar()
+    auth.updateUser({ ...auth.user!, profile_picture: null })
+    toast.success('Photo supprimée.')
+  } catch (err) {
+    toast.error(apiError(err, 'Impossible de supprimer la photo.'))
+  } finally {
+    avatarLoading.value = false
+  }
+}
+
+// ── Vérification email ───────────────────────────────────────────────────────
+const emailVerifLoading = ref(false)
+
+async function handleSendEmailVerification() {
+  emailVerifLoading.value = true
+  try {
+    await usersApi.sendEmailVerification()
+    toast.success('Email de vérification envoyé. Vérifiez votre boîte mail.')
+  } catch (err) {
+    toast.error(apiError(err, 'Impossible d\'envoyer l\'email de vérification.'))
+  } finally {
+    emailVerifLoading.value = false
+  }
+}
+
 // ── Edit profile sheet ───────────────────────────────────────────────────
 const showProfileSheet = ref(false)
 const profileForm = reactive({
   first_name: '',
   last_name: '',
+  email: '',
   phone: '',
   street: '',
   city: '',
@@ -39,6 +89,7 @@ function openProfileSheet() {
   if (!u) return
   profileForm.first_name  = u.first_name  ?? ''
   profileForm.last_name   = u.last_name   ?? ''
+  profileForm.email       = u.email       ?? ''
   profileForm.phone       = u.phone       ?? ''
   profileForm.street      = u.street      ?? ''
   profileForm.city        = u.city        ?? ''
@@ -61,6 +112,7 @@ async function handleUpdateProfile() {
     const { data } = await authApi.updateProfile({
       first_name:  profileForm.first_name.trim(),
       last_name:   profileForm.last_name.trim(),
+      email:       profileForm.email.trim()       || undefined,
       phone:       profileForm.phone.trim()       || undefined,
       street:      profileForm.street.trim()      || undefined,
       city:        profileForm.city.trim()        || undefined,
@@ -156,6 +208,8 @@ function confirmLogout() {
   showLogoutDialog.value = false
   handleLogout()
 }
+
+
 </script>
 
 <template>
@@ -165,10 +219,50 @@ function confirmLogout() {
       <div class="glass rounded-[20px] relative overflow-hidden flex flex-col items-center gap-3 px-5 py-7 text-center">
         <!-- Glow -->
         <div class="absolute -top-[60px] left-1/2 -translate-x-1/2 w-[200px] h-[200px] bg-[radial-gradient(circle,var(--primary-30)_0%,transparent_70%)] pointer-events-none" />
-        <!-- Avatar -->
-        <div class="w-[72px] h-[72px] rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] glow-primary border-2 border-white/15 flex items-center justify-center text-2xl font-extrabold text-white z-10">
-          {{ initials }}
+        <!-- Avatar cliquable -->
+        <div class="relative z-10">
+          <input ref="avatarInput" type="file" accept="image/*" class="hidden" @change="handleAvatarChange" />
+          <button
+            class="w-[72px] h-[72px] rounded-full overflow-hidden border-2 border-white/15 glow-primary cursor-pointer relative group"
+            :disabled="avatarLoading"
+            @click="avatarInput?.click()"
+            aria-label="Modifier la photo"
+          >
+            <img
+              v-if="user?.profile_picture"
+              :src="user.profile_picture"
+              alt="Avatar"
+              class="w-full h-full object-cover"
+            />
+            <div
+              v-else
+              class="w-full h-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] flex items-center justify-center text-2xl font-extrabold text-white"
+            >{{ initials }}</div>
+            <!-- Overlay édition -->
+            <div class="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+                <circle cx="12" cy="13" r="4"/>
+              </svg>
+            </div>
+            <!-- Spinner -->
+            <div v-if="avatarLoading" class="absolute inset-0 bg-black/60 flex items-center justify-center">
+              <div class="w-6 h-6 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+            </div>
+          </button>
+          <!-- Bouton supprimer si photo existante -->
+          <button
+            v-if="user?.profile_picture && !avatarLoading"
+            class="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-red-500 border-2 border-[var(--bg)] flex items-center justify-center cursor-pointer"
+            @click.stop="handleDeleteAvatar"
+            aria-label="Supprimer la photo"
+          >
+            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
         </div>
+
         <!-- Info -->
         <div class="flex flex-col items-center gap-1.5 z-10">
           <h1 class="text-xl font-extrabold text-app-primary tracking-tight">{{ user?.first_name }} {{ user?.last_name }}</h1>
@@ -176,7 +270,25 @@ function confirmLogout() {
             class="text-xs font-semibold px-3 py-1 rounded-full uppercase tracking-[0.04em]"
             :class="roleBadgeClass"
           >{{ roleLabel }}</div>
-          <p class="text-[13px] text-app-muted">{{ user?.email }}</p>
+          <!-- Email + badge vérifié -->
+          <div class="flex items-center gap-1.5 mt-0.5">
+            <p class="text-[13px] text-app-muted">{{ user?.email }}</p>
+            <span
+              v-if="user?.email_verified"
+              class="flex items-center gap-0.5 text-[10px] font-semibold text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded-full"
+            >
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              Vérifié
+            </span>
+            <button
+              v-else
+              class="text-[10px] font-semibold text-[var(--primary)] bg-[var(--primary-10)] border border-[var(--primary-25)] px-1.5 py-0.5 rounded-full cursor-pointer transition-colors hover:bg-[var(--primary-20)] disabled:opacity-40"
+              :disabled="emailVerifLoading"
+              @click="handleSendEmailVerification"
+            >
+              {{ emailVerifLoading ? '…' : 'Vérifier' }}
+            </button>
+          </div>
           <div v-if="user?.phone" class="flex items-center gap-1.5 text-[12px] text-app-faint mt-0.5">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.58 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.55a16 16 0 0 0 8 8l.91-.91a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
@@ -282,11 +394,36 @@ function confirmLogout() {
         </div>
       </div>
 
-      <!-- À propos -->
+      <!-- Aide et support -->
       <div class="flex flex-col gap-2">
-        <h2 class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">À propos</h2>
+        <h2 class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Support</h2>
         <div class="glass rounded-[20px] overflow-hidden">
-          <div class="flex items-center gap-3 px-4 py-3.5">
+          <div
+            class="flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors active:bg-white/5"
+            @click="router.push('/aide')"
+          >
+            <div class="w-9 h-9 rounded-[10px] bg-white/[0.06] border border-[var(--glass-border)] flex items-center justify-center text-app-muted shrink-0">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            </div>
+            <div class="flex-1 flex flex-col gap-0.5">
+              <span class="text-sm font-semibold text-app-primary">Aide et support</span>
+              <span class="text-xs text-app-muted">FAQ, contact, signalement</span>
+            </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
+          </div>
+
+          <div class="h-px bg-[var(--glass-border)] mx-4" />
+          
+          <div
+            class="flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors active:bg-white/5"
+            @click="router.push('/a-propos')"
+          >
             <div class="w-9 h-9 rounded-[10px] bg-white/[0.06] border border-[var(--glass-border)] flex items-center justify-center text-app-muted shrink-0">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
                 <circle cx="12" cy="12" r="10"/>
@@ -295,12 +432,21 @@ function confirmLogout() {
               </svg>
             </div>
             <div class="flex-1 flex flex-col gap-0.5">
-              <span class="text-sm font-semibold text-app-primary">Version</span>
-              <span class="text-xs text-app-muted">KDCL Groupage v0.0.1</span>
+              <span class="text-sm font-semibold text-app-primary">À propos</span>
+              <span class="text-xs text-app-muted">Version, CGU, confidentialité</span>
             </div>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint">
+              <polyline points="9 18 15 12 9 6"/>
+            </svg>
           </div>
         </div>
       </div>
+
+      <!-- À propos -->
+      <!-- <div class="flex flex-col gap-2">
+        <h2 class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Application</h2>
+        
+      </div> -->
 
       <!-- Logout -->
       <button
@@ -410,6 +556,28 @@ function confirmLogout() {
                   </div>
                 </div>
 
+                <!-- Email -->
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Email</label>
+                  <input
+                    v-model="profileForm.email"
+                    type="email"
+                    class="input-field"
+                    placeholder="jean@exemple.com"
+                    :disabled="profileLoading"
+                  />
+                  <p
+                    v-if="profileForm.email.trim() && profileForm.email.trim() !== (user?.email ?? '')"
+                    class="text-[11px] text-amber-400 flex items-center gap-1"
+                  >
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                      <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Changer l'email réinitialisera votre vérification.
+                  </p>
+                </div>
+
                 <!-- Phone -->
                 <div class="flex flex-col gap-1.5">
                   <label class="text-[13px] font-medium text-app-muted uppercase tracking-[0.05em]">Téléphone</label>
@@ -512,6 +680,7 @@ function confirmLogout() {
         </div>
       </Transition>
     </Teleport>
+
   </AppLayout>
 </template>
 

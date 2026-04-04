@@ -14,6 +14,11 @@ const router = createRouter({
       component: () => import('@/views/ResetPasswordView.vue'),
       meta: { public: true },
     },
+    {
+      path: '/verify-email',
+      component: () => import('@/views/VerifyEmailView.vue'),
+      meta: { public: true },
+    },
     { path: '/', redirect: '/voyages' },
     { path: '/voyages', component: () => import('@/views/VoyagesView.vue') },
     { path: '/voyages/:id', component: () => import('@/views/VoyageDetailView.vue') },
@@ -23,12 +28,17 @@ const router = createRouter({
     { path: '/forum', component: () => import('@/views/ForumView.vue') },
     { path: '/forum/:id', component: () => import('@/views/ForumChatView.vue') },
     { path: '/profil', component: () => import('@/views/ProfilView.vue') },
+    { path: '/groupeur/:id', component: () => import('@/views/GroupeurProfilView.vue'), meta: { public: false } },
+    { path: '/aide',         component: () => import('@/views/AideSupportView.vue') },
+    { path: '/a-propos',     component: () => import('@/views/AProposView.vue') },
   ],
 })
 
 router.beforeEach((to) => {
   const auth = useAuthStore()
-  if (!to.meta.public && !auth.isAuthenticated) return '/login'
+  if (!to.meta.public && !auth.isAuthenticated) {
+    return `/login?redirect=${encodeURIComponent(to.fullPath)}`
+  }
 })
 
 export default router

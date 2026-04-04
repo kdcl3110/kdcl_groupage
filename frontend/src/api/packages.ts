@@ -13,7 +13,7 @@ export const packagesApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }),
   remove: (id: number) => api.delete(`/packages/${id}`),
-  cancel: (id: number) => api.patch(`/packages/${id}/cancel`),
+  cancel: (id: number) => api.patch<{ message: string; newStatus: string }>(`/packages/${id}/cancel`),
   submit: (id: number, travel_id: number) =>
     api.patch<Package>(`/packages/${id}/submit`, { travel_id }),
   validate: (id: number) =>

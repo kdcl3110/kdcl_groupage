@@ -222,13 +222,30 @@ export class PackageService {
     });
   }
 
-  async cancel(packageId: number, clientId: number): Promise<{ message: string }> {
+  async cancel(packageId: number, clientId: number): Promise<{ message: string; newStatus: string }> {
     const pkg = await this.findOwnedPackage(packageId, clientId);
-    if (pkg.status !== PackageStatus.PENDING && pkg.status !== PackageStatus.SUBMITTED) {
+
+    if (pkg.status === PackageStatus.SUBMITTED) {
+      // Le client retire sa soumission → repasse en pending
+      const travelId = pkg.travel_id!;
+      const travel = await Travel.findByPk(travelId, { attributes: ['travel_id', 'created_by'] });
+      await pkg.update({ status: PackageStatus.PENDING, travel_id: null });
+      if (travel) {
+        await this.notify(
+          travel.created_by,
+          'Soumission retirée',
+          `Le client a retiré le colis ${pkg.tracking_number} du voyage #${travelId} avant validation.`,
+        );
+      }
+      return { message: 'Submission withdrawn successfully', newStatus: PackageStatus.PENDING };
+    }
+
+    if (pkg.status !== PackageStatus.PENDING) {
       throw new AppError(400, `Only pending or submitted packages can be cancelled (current status: "${pkg.status}")`);
     }
+
     await pkg.update({ status: PackageStatus.CANCELLED });
-    return { message: 'Package cancelled successfully' };
+    return { message: 'Package cancelled successfully', newStatus: PackageStatus.CANCELLED };
   }
 
   async remove(packageId: number, clientId: number): Promise<{ message: string }> {

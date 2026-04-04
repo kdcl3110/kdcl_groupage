@@ -15,6 +15,32 @@ export interface User {
   city: string
   country: string
   postal_code: string | null
+  profile_picture: string | null
+  email_verified: boolean
+  phone_verified: boolean
+}
+
+export interface TravelCreator {
+  user_id: number
+  first_name: string
+  last_name: string
+  phone: string
+  city: string
+  country: string
+}
+
+export interface GroupeurProfile {
+  user_id: number
+  first_name: string
+  last_name: string
+  phone: string
+  email: string
+  city: string
+  country: string
+  registration_date: string
+  phone_verified: boolean
+  email_verified: boolean
+  travel_count: number
 }
 
 export interface Travel {
@@ -43,6 +69,8 @@ export interface Travel {
   volume_fill_pct: number
   remaining_weight: number
   remaining_volume: number
+  last_message_at: string | null
+  creator?: TravelCreator
 }
 
 export interface PackageClient {
@@ -89,6 +117,12 @@ export interface Recipient {
   country: string
 }
 
+export interface ForumParticipant {
+  user_id: number
+  first_name: string
+  last_name: string
+}
+
 export interface ForumMessage {
   message_id: number
   travel_id: number
@@ -98,6 +132,8 @@ export interface ForumMessage {
   content: string
   creation_date: string
   author?: { user_id: number; first_name: string; last_name: string } | null
+  is_read: boolean
+  readers?: { user_id: number; first_name: string; last_name: string }[]
 }
 
 export interface Notification {

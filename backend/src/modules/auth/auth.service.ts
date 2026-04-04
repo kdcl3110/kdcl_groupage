@@ -16,7 +16,11 @@ import type {
 
 type SafeUser = Omit<
   UserAttributes,
-  "password" | "reset_password_token" | "reset_password_expires"
+  | "password"
+  | "reset_password_token"
+  | "reset_password_expires"
+  | "email_verification_token"
+  | "email_verification_expires"
 >;
 
 import type { UserAttributes } from "../../models/User.model";
@@ -136,7 +140,22 @@ export class AuthService {
       throw new AppError(400, "Invalid phone number format");
     }
 
-    await user.update(data);
+    const patch: Record<string, unknown> = { ...data };
+
+    // Changement d'email : vérifier la disponibilité et réinitialiser la vérification
+    if (data.email && data.email !== user.email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(data.email)) {
+        throw new AppError(400, "Invalid email format");
+      }
+      const existing = await User.findOne({ where: { email: data.email } });
+      if (existing) throw new AppError(409, "Cette adresse email est déjà utilisée");
+      patch.email_verified            = false;
+      patch.email_verification_token  = null;
+      patch.email_verification_expires = null;
+    }
+
+    await user.update(patch);
     return this.sanitize(user);
   }
 
@@ -165,8 +184,14 @@ export class AuthService {
   }
 
   private sanitize(user: User): SafeUser {
-    const { password, reset_password_token, reset_password_expires, ...safe } =
-      user.toJSON() as UserAttributes;
+    const {
+      password,
+      reset_password_token,
+      reset_password_expires,
+      email_verification_token,
+      email_verification_expires,
+      ...safe
+    } = user.toJSON() as UserAttributes;
     return safe;
   }
 

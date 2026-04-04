@@ -14,6 +14,17 @@ const auth = useAuthStore()
 const isClient = computed(() => auth.user?.role === 'client')
 const travels = ref<Travel[]>([])
 const loading = ref(true)
+const unreadCounts = ref<Map<number, number>>(new Map())
+
+const visibleTravels = computed(() =>
+  travels.value
+    .filter((t) => t.status !== 'cancelled')
+    .sort((a, b) => {
+      const da = new Date(a.last_message_at ?? a.creation_date).getTime()
+      const db = new Date(b.last_message_at ?? b.creation_date).getTime()
+      return db - da
+    }),
+)
 
 function transportIcon(type: string) {
   return type === 'ship' ? 'M' : 'A' // used in avatar
@@ -53,6 +64,21 @@ async function fetchTravels() {
   } finally {
     loading.value = false
   }
+
+  // Charger les non-lus en arrière-plan après avoir les voyages
+  fetchUnreadCounts()
+}
+
+async function fetchUnreadCounts() {
+  if (travels.value.length === 0) return
+  const results = await Promise.allSettled(
+    travels.value.map((t) => travelsApi.getForumUnreadCount(t.travel_id)),
+  )
+  const map = new Map<number, number>()
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled') map.set(travels.value[i].travel_id, r.value.data.count)
+  })
+  unreadCounts.value = map
 }
 
 onMounted(fetchTravels)
@@ -80,7 +106,7 @@ onMounted(fetchTravels)
       </div>
 
       <!-- Empty state -->
-      <div v-else-if="travels.length === 0" class="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center text-app-muted">
+      <div v-else-if="visibleTravels.length === 0" class="flex-1 flex flex-col items-center justify-center gap-3 px-6 text-center text-app-muted">
         <div class="w-16 h-16 rounded-full bg-[var(--primary-10)] flex items-center justify-center">
           <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-[var(--primary)] opacity-60">
             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -95,7 +121,7 @@ onMounted(fetchTravels)
       <!-- Chat list -->
       <div v-else class="flex-1 overflow-y-auto scrollbar-hide">
         <div
-          v-for="t in travels"
+          v-for="t in visibleTravels"
           :key="t.travel_id"
           class="flex items-center gap-3.5 px-4 sm:px-6 py-3.5 border-b border-[var(--glass-border)] cursor-pointer transition-colors active:bg-[var(--glass-bg)]"
           @click="router.push(`/forum/${t.travel_id}`)"
@@ -131,7 +157,15 @@ onMounted(fetchTravels)
               <p class="text-[13px] text-app-muted truncate">
                 {{ t.itinerary || (t.transport_type === 'ship' ? 'Transport maritime' : 'Transport aérien') }}
               </p>
-              <StatusBadge :status="t.status" />
+              <div class="flex items-center gap-1.5 shrink-0">
+                <span
+                  v-if="(unreadCounts.get(t.travel_id) ?? 0) > 0"
+                  class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-[var(--primary)] text-white text-[11px] font-bold"
+                >
+                  {{ unreadCounts.get(t.travel_id) }}
+                </span>
+                <StatusBadge :status="t.status" />
+              </div>
             </div>
           </div>
 

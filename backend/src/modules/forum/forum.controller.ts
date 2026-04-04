@@ -14,6 +14,16 @@ export async function getForumMessages(req: AuthRequest, res: Response, next: Ne
   }
 }
 
+export async function getForumUnreadCount(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const caller = { userId: req.user!.user_id, role: req.user!.role };
+    const count = await service.getUnreadCount(Number(req.params.id), caller);
+    res.status(200).json({ count });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function postForumMessage(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { content, parent_message_id } = req.body as { content: string; parent_message_id?: number };

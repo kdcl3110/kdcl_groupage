@@ -29,6 +29,8 @@ const PACKAGE_ATTRS = [
   'weight', 'volume', 'declared_value', 'status', 'creation_date',
 ];
 
+const CREATOR_ATTRS = ['user_id', 'first_name', 'last_name', 'phone', 'city', 'country'];
+
 const COUNTRY_ATTRS = ['country_id', 'name'];
 const COUNTRY_INCLUDE = [
   { association: 'origin',      attributes: COUNTRY_ATTRS },
@@ -44,11 +46,13 @@ export type TravelWithLoad = TravelAttributes & {
   volume_fill_pct: number;
   remaining_weight: number;
   remaining_volume: number;
+  last_message_at: string | null;
 };
 
 // Détail : même chose + liste des colis
 export type TravelDetail = TravelWithLoad & {
   packages: object[];
+  creator: object | null;
 };
 
 export class TravelService {
@@ -119,12 +123,17 @@ export class TravelService {
     const hasMore = rows.length > limit;
     const travels = hasMore ? rows.slice(0, limit) : rows;
 
-    const loadMap = await this.bulkComputeLoad(travels.map((t) => t.travel_id));
+    const travelIds = travels.map((t) => t.travel_id);
+    const [loadMap, lastMsgMap] = await Promise.all([
+      this.bulkComputeLoad(travelIds),
+      this.bulkFetchLastMessageAt(travelIds),
+    ]);
 
     return {
-      data: travels.map((travel) =>
-        this.mergeLoad(travel, loadMap.get(travel.travel_id) ?? this.emptyLoadValues(travel)),
-      ),
+      data: travels.map((travel) => ({
+        ...this.mergeLoad(travel, loadMap.get(travel.travel_id) ?? this.emptyLoadValues(travel)),
+        last_message_at: lastMsgMap.get(travel.travel_id) ?? null,
+      })),
       hasMore,
     };
   }
@@ -136,6 +145,7 @@ export class TravelService {
     const travel = await Travel.findByPk(travelId, {
       include: [
         { association: 'packages', attributes: PACKAGE_ATTRS },
+        { association: 'creator', attributes: CREATOR_ATTRS },
         ...COUNTRY_INCLUDE,
       ],
     });
@@ -144,9 +154,15 @@ export class TravelService {
     this.assertAccess(travel, caller);
 
     const packages = (travel as any).packages as Package[];
+    const creator  = (travel as any).creator ?? null;
     const loadValues = this.computeLoadValues(packages, travel);
 
-    return { ...this.mergeLoad(travel, loadValues), packages: packages.map((p) => p.toJSON()) };
+    return {
+      ...this.mergeLoad(travel, loadValues),
+      last_message_at: null,
+      creator,
+      packages: packages.map((p) => p.toJSON()),
+    };
   }
 
   async update(
@@ -323,8 +339,26 @@ export class TravelService {
     }
   }
 
-  private mergeLoad(travel: Travel, load: ReturnType<typeof this.emptyLoadValues>): TravelWithLoad {
+  private mergeLoad(travel: Travel, load: ReturnType<typeof this.emptyLoadValues>) {
     return { ...(travel.toJSON() as TravelAttributes), ...load };
+  }
+
+  private async bulkFetchLastMessageAt(travelIds: number[]): Promise<Map<number, string | null>> {
+    if (travelIds.length === 0) return new Map();
+    const rows = (await ForumMessage.findAll({
+      where: { travel_id: { [Op.in]: travelIds } },
+      attributes: [
+        'travel_id',
+        [fn('MAX', col('creation_date')), 'last_message_at'],
+      ],
+      group: ['travel_id'],
+      raw: true,
+    })) as unknown as Array<{ travel_id: number; last_message_at: string }>;
+    const map = new Map<number, string | null>();
+    for (const row of rows) {
+      map.set(Number(row.travel_id), row.last_message_at ?? null);
+    }
+    return map;
   }
 
   private async bulkComputeLoad(travelIds: number[]): Promise<Map<number, ReturnType<typeof this.emptyLoadValues>>> {

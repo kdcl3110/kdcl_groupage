@@ -7,6 +7,7 @@ import { Package } from './Package.model';
 import { Payment } from './Payment.model';
 import { Notification } from './Notification.model';
 import { ForumMessage, UserForumMessage } from './ForumMessage.model';
+import { MessageRead } from './MessageRead.model';
 import { Country } from './Country.model';
 
 User.initModel(sequelize);
@@ -17,6 +18,7 @@ Payment.initModel(sequelize);
 Notification.initModel(sequelize);
 ForumMessage.initModel(sequelize);
 UserForumMessage.initModel(sequelize);
+MessageRead.initModel(sequelize);
 Country.initModel(sequelize);
 
 // User -> Package
@@ -69,11 +71,17 @@ ForumMessage.belongsTo(User, { foreignKey: 'author_id', as: 'author' });
 ForumMessage.hasMany(ForumMessage, { foreignKey: 'parent_message_id', as: 'replies' });
 ForumMessage.belongsTo(ForumMessage, { foreignKey: 'parent_message_id', as: 'parent' });
 
+// MessageRead (accusés de lecture)
+ForumMessage.hasMany(MessageRead, { foreignKey: 'message_id', as: 'reads' });
+MessageRead.belongsTo(ForumMessage, { foreignKey: 'message_id', as: 'message' });
+User.hasMany(MessageRead, { foreignKey: 'user_id', as: 'message_reads' });
+MessageRead.belongsTo(User, { foreignKey: 'user_id', as: 'reader' });
+
 // User ↔ ForumMessage (N:M)
 User.belongsToMany(ForumMessage, { through: UserForumMessage, foreignKey: 'user_id', as: 'read_messages' });
 ForumMessage.belongsToMany(User, { through: UserForumMessage, foreignKey: 'message_id', as: 'readers' });
 
-export { User, Travel, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage, Country };
+export { User, Travel, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage, MessageRead, Country };
 export * from './User.model';
 export * from './Travel.model';
 export * from './Recipient.model';

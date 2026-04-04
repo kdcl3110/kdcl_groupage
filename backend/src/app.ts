@@ -13,6 +13,7 @@ import travelRouter from './modules/travel/travel.router';
 import recipientRouter from './modules/recipient/recipient.router';
 import countryRouter from './modules/country/country.router';
 import notificationRouter from './modules/notification/notification.router';
+import userRouter from './modules/user/user.router';
 
 function createApp(): Application {
   const app = express();
@@ -68,6 +69,7 @@ function createApp(): Application {
   app.use('/api/v1/recipients', recipientRouter);
   app.use('/api/v1/countries', countryRouter);
   app.use('/api/v1/notifications', notificationRouter);
+  app.use('/api/v1/users', userRouter);
 
   // Error handling
   app.use(notFound);

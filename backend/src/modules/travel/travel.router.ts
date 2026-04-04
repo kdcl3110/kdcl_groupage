@@ -19,7 +19,8 @@ router.put('/:id',        authenticate, adminOrFF, TravelController.updateTravel
 router.put('/:id/status', authenticate, adminOrFF, TravelController.updateTravelStatus);
 
 // Forum du voyage
-router.get('/:id/forum',  authenticate, ForumController.getForumMessages);
-router.post('/:id/forum', authenticate, adminOrFF, ForumController.postForumMessage);
+router.get('/:id/forum/unread', authenticate, ForumController.getForumUnreadCount);
+router.get('/:id/forum',        authenticate, ForumController.getForumMessages);
+router.post('/:id/forum',       authenticate, adminOrFF, ForumController.postForumMessage);
 
 export default router;

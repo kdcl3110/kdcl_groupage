@@ -99,15 +99,24 @@ async function fetchData() {
   }
 }
 
+const isWithdrawing = computed(() => pkg.value?.status === 'submitted')
+
 async function handleCancel() {
+  const wasSubmitted = pkg.value?.status === 'submitted'
   cancelLoading.value = true
   try {
-    await packagesApi.cancel(packageId.value)
-    if (pkg.value) pkg.value.status = 'cancelled'
+    const { data } = await packagesApi.cancel(packageId.value)
+    if (pkg.value) {
+      pkg.value.status = data.newStatus as typeof pkg.value.status
+      if (data.newStatus === 'pending') {
+        pkg.value.travel_id = null
+        travel.value = null
+      }
+    }
     showCancelDialog.value = false
-    toast.success('Colis annulé.')
+    toast.success(wasSubmitted ? 'Soumission retirée. Le colis est de nouveau en attente.' : 'Colis annulé.')
   } catch (err) {
-    toast.error(apiError(err, 'Impossible d\'annuler le colis.'))
+    toast.error(apiError(err, 'Impossible d\'effectuer cette action.'))
   } finally {
     cancelLoading.value = false
   }
@@ -644,7 +653,7 @@ onMounted(fetchData)
               <line x1="15" y1="9" x2="9" y2="15"/>
               <line x1="9" y1="9" x2="15" y2="15"/>
             </svg>
-            Annuler le colis
+            {{ isWithdrawing ? 'Retirer la soumission' : 'Annuler le colis' }}
           </button>
 
         </div>
@@ -872,8 +881,14 @@ onMounted(fetchData)
                 </div>
 
                 <div class="text-center flex flex-col gap-1.5">
-                  <h2 class="text-[17px] font-bold text-app-primary">Annuler le colis ?</h2>
-                  <p class="text-[14px] text-app-muted leading-snug">Cette action est irréversible. Le colis sera marqué comme annulé.</p>
+                  <h2 class="text-[17px] font-bold text-app-primary">
+                    {{ isWithdrawing ? 'Retirer la soumission ?' : 'Annuler le colis ?' }}
+                  </h2>
+                  <p class="text-[14px] text-app-muted leading-snug">
+                    {{ isWithdrawing
+                      ? 'Le groupeur ne pourra plus valider ce colis. Il repassera en attente et vous pourrez le resoumettre.'
+                      : 'Cette action est irréversible. Le colis sera définitivement annulé.' }}
+                  </p>
                 </div>
 
                 <div class="flex flex-col gap-2.5">
@@ -883,14 +898,14 @@ onMounted(fetchData)
                     class="w-full flex items-center justify-center gap-2 py-[13px] rounded-[14px] bg-red-500 text-white text-[15px] font-semibold cursor-pointer transition-opacity active:opacity-80 border-none disabled:opacity-60"
                   >
                     <span v-if="cancelLoading" class="btn-spinner border-white/40 border-t-white" />
-                    <span v-else>Confirmer l'annulation</span>
+                    <span v-else>{{ isWithdrawing ? 'Retirer la soumission' : 'Confirmer l\'annulation' }}</span>
                   </button>
                   <button
                     @click="showCancelDialog = false"
                     :disabled="cancelLoading"
                     class="w-full flex items-center justify-center py-[13px] rounded-[14px] bg-transparent border border-[var(--glass-border)] text-app-muted text-[15px] font-medium cursor-pointer transition-colors hover:text-app-primary hover:border-[var(--primary-30)] disabled:opacity-60"
                   >
-                    Annuler
+                    Retour
                   </button>
                 </div>
               </div>
