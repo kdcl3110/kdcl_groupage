@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import LoadBar from '@/components/common/LoadBar.vue'
+import ReportSheet from '@/components/common/ReportSheet.vue'
 import { travelsApi } from '@/api/travels'
 import { packagesApi } from '@/api/packages'
 import { useAuthStore } from '@/stores/auth'
@@ -21,10 +22,11 @@ const isManager = computed(() => auth.user?.role === 'freight_forwarder' || auth
 const isClient  = computed(() => auth.user?.role === 'client')
 const toast = useToastStore()
 
-const travel = ref<Travel | null>(null)
-const packages = ref<Package[]>([])
-const loading = ref(true)
-const error = ref('')
+const travel       = ref<Travel | null>(null)
+const packages     = ref<Package[]>([])
+const loading      = ref(true)
+const error        = ref('')
+const showReport   = ref(false)
 
 const submittedPackages  = computed(() => packages.value.filter(p => p.status === 'submitted'))
 const otherPackages      = computed(() => packages.value.filter(p => p.status !== 'submitted'))
@@ -69,8 +71,13 @@ async function updateTravelStatus(newStatus: string) {
   statusError.value = ''
   statusLoading.value = true
   try {
-    const { data } = await travelsApi.updateStatus(travel.value.travel_id, newStatus)
-    travel.value = data as Travel
+    await travelsApi.updateStatus(travel.value.travel_id, newStatus)
+    const [travelRes, pkgsRes] = await Promise.all([
+      travelsApi.getById(travelId.value),
+      packagesApi.getAll({ travel_id: String(travelId.value), limit: '1000' }),
+    ])
+    travel.value = travelRes.data
+    packages.value = pkgsRes.data.data.filter(p => p.travel_id === travelId.value)
     toast.success('Statut du voyage mis à jour.')
   } catch (err: unknown) {
     const msg = apiError(err, 'Erreur lors de la mise à jour du statut.')
@@ -211,7 +218,7 @@ async function updatePackageStatus(pkg: Package, target: string) {
       packages.value = packages.value.filter(p => p.package_id !== pkg.package_id)
       toast.success('Colis rejeté. Le client a été notifié.')
     } else {
-      const { data } = await packagesApi.update(pkg.package_id, { status: target })
+      const { data } = await packagesApi.updateStatus(pkg.package_id, target)
       if (idx !== -1) packages.value[idx] = data
       toast.success('Statut du colis mis à jour.')
     }
@@ -1066,5 +1073,28 @@ onMounted(fetchData)
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Lien signalement discret (clients uniquement) -->
+    <div v-if="isClient && travel && !loading" class="px-4 sm:px-6 lg:px-8 pb-4 flex justify-center">
+      <button
+        class="flex items-center gap-1.5 text-[12px] text-app-faint cursor-pointer bg-transparent border-none p-0 transition-colors hover:text-red-400"
+        @click="showReport = true"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        Signaler ce voyage
+      </button>
+    </div>
+
+    <!-- Report sheet -->
+    <ReportSheet
+      v-if="travel"
+      v-model="showReport"
+      target-type="travel"
+      :target-id="travel.travel_id"
+      :target-label="`Voyage #${travel.travel_id} — ${travel.origin.name} → ${travel.destination.name}`"
+    />
   </AppLayout>
 </template>

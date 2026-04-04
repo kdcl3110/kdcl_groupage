@@ -39,3 +39,7 @@ export interface SubmitToTravelDto {
 export interface AdminReassignDto {
   travel_id: number | null; // null = retirer du voyage (repasse en pending)
 }
+
+export interface UpdatePackageStatusDto {
+  status: 'in_transit' | 'delivered' | 'returned';
+}

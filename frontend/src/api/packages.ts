@@ -23,4 +23,6 @@ export const packagesApi = {
     api.get<Package>(`/packages/${id}/manager-detail`),
   reassign: (id: number, travel_id: number) =>
     api.patch<Package>(`/packages/${id}/reassign`, { travel_id }),
+  updateStatus: (id: number, status: string) =>
+    api.patch<Package>(`/packages/${id}/status`, { status }),
 }

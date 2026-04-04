@@ -14,6 +14,7 @@ import recipientRouter from './modules/recipient/recipient.router';
 import countryRouter from './modules/country/country.router';
 import notificationRouter from './modules/notification/notification.router';
 import userRouter from './modules/user/user.router';
+import reportRouter from './modules/report/report.router';
 
 function createApp(): Application {
   const app = express();
@@ -70,6 +71,7 @@ function createApp(): Application {
   app.use('/api/v1/countries', countryRouter);
   app.use('/api/v1/notifications', notificationRouter);
   app.use('/api/v1/users', userRouter);
+  app.use('/api/v1/reports', reportRouter);
 
   // Error handling
   app.use(notFound);

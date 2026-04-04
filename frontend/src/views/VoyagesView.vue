@@ -28,56 +28,38 @@ const offset = ref(0)
 const PAGE_SIZE = 10
 const error = ref('')
 
-// Manager filters (by travel status) 
+// Manager filters (by travel status)
 const activeFilter = ref('all')
 const filters = [
-  { key: 'all',       label: 'Tous' },
-  { key: 'open',      label: 'Ouvert' },
-  { key: 'full',      label: 'Complet' },
-  { key: 'in_transit',label: 'En transit' },
-  { key: 'delivered', label: 'Livré' },
-  { key: 'cancelled', label: 'Annulé' },
+  { key: 'all',        label: 'Tous' },
+  { key: 'open',       label: 'Ouvert' },
+  { key: 'full',       label: 'Complet' },
+  { key: 'in_transit', label: 'En transit' },
+  { key: 'delivered',  label: 'Livré' },
+  { key: 'cancelled',  label: 'Annulé' },
 ]
 
-// Client filters (by participation) 
-const clientFilter = ref('all')
-const clientFilters = [
-  { key: 'all',       label: 'Tous' },
-  { key: 'my',        label: 'Mes voyages' },
-  { key: 'pending',   label: 'En attente' },
-  { key: 'active',    label: 'En cours' },
-  { key: 'delivered', label: 'Livrés' },
-]
+// Client tabs
+const clientTab = ref<'available' | 'mine'>('available')
 const myPackages = ref<Package[]>([])
 
 const myTravelIds = computed(() => {
-  const all       = new Set<number>()
-  const pending   = new Set<number>()
-  const active    = new Set<number>()
-  const delivered = new Set<number>()
+  const ids = new Set<number>()
   for (const pkg of myPackages.value) {
-    if (!pkg.travel_id) continue
-    all.add(pkg.travel_id)
-    if (pkg.status === 'submitted') pending.add(pkg.travel_id)
-    if (pkg.status === 'in_travel' || pkg.status === 'in_transit') active.add(pkg.travel_id)
-    if (pkg.status === 'delivered') delivered.add(pkg.travel_id)
+    if (pkg.travel_id) ids.add(pkg.travel_id)
   }
-  return { all, pending, active, delivered }
+  return ids
 })
 
 const filtered = computed(() => {
-  if (isManager.value) {
-    // Le filtre de statut est géré côté serveur
-    return travels.value
+  if (isManager.value) return travels.value
+  if (clientTab.value === 'available') {
+    return travels.value.filter(
+      t => (t.status === 'open' || t.status === 'full') && !myTravelIds.value.has(t.travel_id)
+    )
   }
-  // client — filtre client-side sur les voyages chargés
-  const ids = myTravelIds.value
-  if (clientFilter.value === 'all')       return travels.value
-  if (clientFilter.value === 'my')        return travels.value.filter(t => ids.all.has(t.travel_id))
-  if (clientFilter.value === 'pending')   return travels.value.filter(t => ids.pending.has(t.travel_id))
-  if (clientFilter.value === 'active')    return travels.value.filter(t => ids.active.has(t.travel_id))
-  if (clientFilter.value === 'delivered') return travels.value.filter(t => ids.delivered.has(t.travel_id))
-  return travels.value
+  // "mine" — voyages où le client a au moins un colis
+  return travels.value.filter(t => myTravelIds.value.has(t.travel_id))
 })
 
 async function fetchTravels(reset = true) {
@@ -90,24 +72,28 @@ async function fetchTravels(reset = true) {
   }
   error.value = ''
   try {
-    const params: Record<string, string> = {
-      limit: String(PAGE_SIZE),
-      offset: String(offset.value),
-    }
-    // Pour le manager, on passe le filtre de statut côté serveur
-    if (isManager.value && activeFilter.value !== 'all') {
-      params.status = activeFilter.value
-    }
-
-    const travRes = await travelsApi.getAll(params)
-    const { data: newTravels, hasMore: more } = travRes.data
-    travels.value = reset ? newTravels : [...travels.value, ...newTravels]
-    hasMore.value = more
-    offset.value += newTravels.length
-
     if (isClient.value) {
-      const pkgRes = await packagesApi.getAll({ limit: '1000' })
+      // Clients : un seul chargement, haute limite, pas de pagination
+      const [travRes, pkgRes] = await Promise.all([
+        travelsApi.getAll({ limit: '500', offset: '0' }),
+        packagesApi.getAll({ limit: '1000' }),
+      ])
+      travels.value = travRes.data.data
+      hasMore.value = false
       myPackages.value = pkgRes.data.data
+    } else {
+      const params: Record<string, string> = {
+        limit: String(PAGE_SIZE),
+        offset: String(offset.value),
+      }
+      if (isManager.value && activeFilter.value !== 'all') {
+        params.status = activeFilter.value
+      }
+      const travRes = await travelsApi.getAll(params)
+      const { data: newTravels, hasMore: more } = travRes.data
+      travels.value = reset ? newTravels : [...travels.value, ...newTravels]
+      hasMore.value = more
+      offset.value += newTravels.length
     }
   } catch {
     error.value = 'Impossible de charger les voyages. Vérifiez votre connexion.'
@@ -250,30 +236,44 @@ onMounted(fetchTravels)
         <RefreshButton :loading="loading" @click="fetchTravels" />
       </div>
 
-      <!-- Filter chips — manager: by status / client: by participation -->
-      <div class="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
-        <template v-if="isManager">
-          <button
-            v-for="f in filters"
-            :key="f.key"
-            class="chip"
-            :class="{ active: activeFilter === f.key }"
-            @click="activeFilter = f.key"
-          >
-            {{ f.label }}
-          </button>
-        </template>
-        <template v-else>
-          <button
-            v-for="f in clientFilters"
-            :key="f.key"
-            class="chip"
-            :class="{ active: clientFilter === f.key }"
-            @click="clientFilter = f.key"
-          >
-            {{ f.label }}
-          </button>
-        </template>
+      <!-- Manager : filter chips par statut -->
+      <div v-if="isManager" class="flex gap-2 overflow-x-auto scrollbar-hide pb-0.5">
+        <button
+          v-for="f in filters"
+          :key="f.key"
+          class="chip"
+          :class="{ active: activeFilter === f.key }"
+          @click="activeFilter = f.key"
+        >
+          {{ f.label }}
+        </button>
+      </div>
+
+      <!-- Client : deux onglets -->
+      <div v-if="isClient" class="flex gap-1 p-1 rounded-[14px] bg-[var(--glass-bg)] border border-[var(--glass-border)]">
+        <button
+          class="flex-1 py-2 rounded-[10px] text-sm font-semibold transition-colors cursor-pointer border-none"
+          :class="clientTab === 'available'
+            ? 'bg-[var(--primary)] text-white shadow-sm'
+            : 'bg-transparent text-app-muted'"
+          @click="clientTab = 'available'"
+        >
+          Disponibles
+        </button>
+        <button
+          class="flex-1 py-2 rounded-[10px] text-sm font-semibold transition-colors cursor-pointer border-none"
+          :class="clientTab === 'mine'
+            ? 'bg-[var(--primary)] text-white shadow-sm'
+            : 'bg-transparent text-app-muted'"
+          @click="clientTab = 'mine'"
+        >
+          Mes voyages
+          <span
+            v-if="myTravelIds.size > 0"
+            class="ml-1.5 inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold"
+            :class="clientTab === 'mine' ? 'bg-white/30 text-white' : 'bg-[var(--primary-20)] text-[var(--primary)]'"
+          >{{ myTravelIds.size }}</span>
+        </button>
       </div>
 
       <!-- Loading -->
@@ -298,7 +298,9 @@ onMounted(fetchTravels)
         title="Aucun voyage"
         :message="isManager
           ? (activeFilter === 'all' ? 'Aucun voyage disponible pour le moment.' : 'Aucun voyage avec ce statut.')
-          : (clientFilter === 'all' ? 'Aucun voyage disponible pour le moment.' : 'Aucun voyage correspondant à ce filtre.')"
+          : clientTab === 'available'
+            ? 'Aucun voyage ouvert pour le moment. Revenez bientôt !'
+            : 'Vous n\'avez encore soumis de colis à aucun voyage.'"
       >
         <template #icon><Ship :size="40" /></template>
       </EmptyState>
@@ -312,8 +314,8 @@ onMounted(fetchTravels)
         />
       </div>
 
-      <!-- Voir plus -->
-      <div v-if="(hasMore || loadingMore) && !loading" class="flex justify-center pb-2">
+      <!-- Voir plus (manager uniquement) -->
+      <div v-if="isManager && (hasMore || loadingMore) && !loading" class="flex justify-center pb-2">
         <AppButton variant="outline" :loading="loadingMore" loading-text="Chargement..." @click="fetchTravels(false)">
           Voir plus
         </AppButton>

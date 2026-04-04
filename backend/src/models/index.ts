@@ -9,6 +9,7 @@ import { Notification } from './Notification.model';
 import { ForumMessage, UserForumMessage } from './ForumMessage.model';
 import { MessageRead } from './MessageRead.model';
 import { Country } from './Country.model';
+import { Report } from './Report.model';
 
 User.initModel(sequelize);
 Travel.initModel(sequelize);
@@ -20,6 +21,11 @@ ForumMessage.initModel(sequelize);
 UserForumMessage.initModel(sequelize);
 MessageRead.initModel(sequelize);
 Country.initModel(sequelize);
+Report.initModel(sequelize);
+
+// User -> Report
+User.hasMany(Report, { foreignKey: 'reporter_id', as: 'reports_filed' });
+Report.belongsTo(User, { foreignKey: 'reporter_id', as: 'reporter' });
 
 // User -> Package
 User.hasMany(Package, { foreignKey: 'client_id', as: 'packages' });
@@ -81,7 +87,7 @@ MessageRead.belongsTo(User, { foreignKey: 'user_id', as: 'reader' });
 User.belongsToMany(ForumMessage, { through: UserForumMessage, foreignKey: 'user_id', as: 'read_messages' });
 ForumMessage.belongsToMany(User, { through: UserForumMessage, foreignKey: 'message_id', as: 'readers' });
 
-export { User, Travel, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage, MessageRead, Country };
+export { User, Travel, Recipient, Package, Payment, Notification, ForumMessage, UserForumMessage, MessageRead, Country, Report };
 export * from './User.model';
 export * from './Travel.model';
 export * from './Recipient.model';
@@ -90,3 +96,4 @@ export * from './Payment.model';
 export * from './Notification.model';
 export * from './ForumMessage.model';
 export * from './Country.model';
+export * from './Report.model';

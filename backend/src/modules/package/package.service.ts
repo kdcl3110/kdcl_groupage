@@ -12,6 +12,7 @@ import type {
   UpdatePackageDto,
   SubmitToTravelDto,
   AdminReassignDto,
+  UpdatePackageStatusDto,
 } from './package.dto';
 
 const RECIPIENT_ATTRS = [
@@ -276,12 +277,12 @@ export class PackageService {
     if (caller.role === UserRole.CLIENT) {
       const where: Record<string, unknown> = { client_id: caller.userId };
       if (filters.travel_id) where.travel_id = filters.travel_id;
-      rows = await Package.findAll({ where, include, order: [['creation_date', 'DESC']], limit: fetchLimit, offset });
+      rows = await Package.findAll({ where, include, order: [['updatedAt', 'DESC']], limit: fetchLimit, offset });
     } else if (caller.role === UserRole.ADMIN) {
       // Admin: all packages, with optional travel_id filter
       const where: Record<string, unknown> = {};
       if (filters.travel_id) where.travel_id = filters.travel_id;
-      rows = await Package.findAll({ where, include, order: [['creation_date', 'DESC']], limit: fetchLimit, offset });
+      rows = await Package.findAll({ where, include, order: [['updatedAt', 'DESC']], limit: fetchLimit, offset });
     } else {
       // Freight forwarder: must provide travel_id, and the travel must belong to them
       if (!filters.travel_id) return { data: [], hasMore: false };
@@ -290,7 +291,7 @@ export class PackageService {
       rows = await Package.findAll({
         where: { travel_id: filters.travel_id },
         include,
-        order: [['creation_date', 'DESC']],
+        order: [['updatedAt', 'DESC']],
         limit: fetchLimit,
         offset,
       });
@@ -362,6 +363,55 @@ export class PackageService {
       'Colis rejeté',
       `Votre colis ${pkg.tracking_number} a été refusé par le groupeur et repassé en attente. Vous pouvez le soumettre à un autre voyage.`,
     );
+
+    return pkg.reload({
+      include: [
+        { association: 'recipient', attributes: RECIPIENT_ATTRS },
+        { association: 'travel',    attributes: TRAVEL_ATTRS },
+      ],
+    });
+  }
+
+  async updateStatusByManager(
+    packageId: number,
+    caller: { userId: number; role: UserRole },
+    dto: UpdatePackageStatusDto,
+  ): Promise<Package> {
+    const pkg = await Package.findByPk(packageId);
+    if (!pkg) throw new AppError(404, 'Package not found');
+
+    // Un groupeur ne peut agir que sur les colis de ses propres voyages
+    if (caller.role === UserRole.FREIGHT_FORWARDER && pkg.travel_id) {
+      const travel = await Travel.findByPk(pkg.travel_id, { attributes: ['created_by'] });
+      if (!travel || travel.created_by !== caller.userId) {
+        throw new AppError(403, 'Access denied: this package does not belong to your travel');
+      }
+    }
+
+    const ALLOWED_TRANSITIONS: Record<string, PackageStatus[]> = {
+      [PackageStatus.IN_TRAVEL]:  [PackageStatus.IN_TRANSIT],
+      [PackageStatus.IN_TRANSIT]: [PackageStatus.DELIVERED, PackageStatus.RETURNED],
+    };
+
+    const allowed = ALLOWED_TRANSITIONS[pkg.status] ?? [];
+    const next = dto.status as PackageStatus;
+
+    if (!allowed.includes(next)) {
+      throw new AppError(
+        400,
+        `Cannot transition package from "${pkg.status}" to "${next}". Allowed: ${allowed.join(', ') || 'none'}`,
+      );
+    }
+
+    await pkg.update({ status: next });
+
+    const statusMessages: Record<string, string> = {
+      [PackageStatus.IN_TRANSIT]: `Votre colis ${pkg.tracking_number} est en transit vers sa destination.`,
+      [PackageStatus.DELIVERED]:  `Votre colis ${pkg.tracking_number} a été livré avec succès.`,
+      [PackageStatus.RETURNED]:   `Votre colis ${pkg.tracking_number} est en cours de retour.`,
+    };
+
+    await this.notify(pkg.client_id, 'Mise à jour de votre colis', statusMessages[next]);
 
     return pkg.reload({
       include: [

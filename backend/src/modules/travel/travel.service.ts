@@ -17,7 +17,7 @@ const STATUS_MESSAGES: Record<TravelStatus, string> = {
 };
 
 const STATUS_TRANSITIONS: Record<TravelStatus, TravelStatus[]> = {
-  [TravelStatus.OPEN]:       [TravelStatus.FULL, TravelStatus.CANCELLED],
+  [TravelStatus.OPEN]:       [TravelStatus.FULL, TravelStatus.IN_TRANSIT, TravelStatus.CANCELLED],
   [TravelStatus.FULL]:       [TravelStatus.OPEN, TravelStatus.IN_TRANSIT, TravelStatus.CANCELLED],
   [TravelStatus.IN_TRANSIT]: [TravelStatus.DELIVERED],
   [TravelStatus.DELIVERED]:  [],
@@ -115,7 +115,7 @@ export class TravelService {
     const rows = await Travel.findAll({
       where,
       include: COUNTRY_INCLUDE,
-      order: [['creation_date', 'DESC']],
+      order: [['updatedAt', 'DESC']],
       limit: limit + 1, // fetch one extra to detect hasMore
       offset,
     });
@@ -237,6 +237,19 @@ export class TravelService {
     }
 
     await travel.update({ status: next });
+
+    // Cascade sur les statuts des colis
+    if (next === TravelStatus.IN_TRANSIT) {
+      await Package.update(
+        { status: PackageStatus.IN_TRANSIT },
+        { where: { travel_id: travelId, status: PackageStatus.IN_TRAVEL } },
+      );
+    } else if (next === TravelStatus.DELIVERED) {
+      await Package.update(
+        { status: PackageStatus.DELIVERED },
+        { where: { travel_id: travelId, status: PackageStatus.IN_TRANSIT } },
+      );
+    }
 
     // Message système dans le forum du voyage
     await ForumMessage.create({

@@ -153,3 +153,13 @@ export async function adminReassign(req: AuthRequest, res: Response, next: NextF
     next(error);
   }
 }
+
+export async function updatePackageStatus(req: AuthRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const caller = { userId: req.user!.user_id, role: req.user!.role };
+    const pkg = await service.updateStatusByManager(Number(req.params.id), caller, req.body);
+    res.status(200).json(pkg);
+  } catch (error) {
+    next(error);
+  }
+}

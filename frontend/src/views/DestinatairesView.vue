@@ -20,6 +20,9 @@ const editingRecipient = ref<Recipient | null>(null)
 const formLoading = ref(false)
 const formError = ref('')
 const formPhoneValid = ref(true)
+const showDeleteDialog = ref(false)
+const confirmDeleteId = ref<number | null>(null)
+const deleteLoading = ref(false)
 
 const form = reactive({
   first_name: '',
@@ -110,13 +113,23 @@ async function handleSubmit() {
   }
 }
 
-async function handleDelete(id: number) {
-  if (!confirm('Supprimer ce destinataire ?')) return
+function openDeleteDialog(id: number) {
+  confirmDeleteId.value = id
+  showDeleteDialog.value = true
+}
+
+async function handleDelete() {
+  if (confirmDeleteId.value === null) return
+  deleteLoading.value = true
   try {
-    await recipientsApi.remove(id)
-    recipients.value = recipients.value.filter((r) => r.recipient_id !== id)
+    await recipientsApi.remove(confirmDeleteId.value)
+    recipients.value = recipients.value.filter((r) => r.recipient_id !== confirmDeleteId.value)
+    showDeleteDialog.value = false
   } catch {
-    alert('Impossible de supprimer ce destinataire.')
+    // keep dialog open, error will be visible to user
+  } finally {
+    deleteLoading.value = false
+    confirmDeleteId.value = null
   }
 }
 
@@ -197,7 +210,7 @@ onMounted(fetchRecipients)
             </button>
             <button
               class="w-8 h-8 rounded-lg glass flex items-center justify-center text-red-400 cursor-pointer transition-colors active:bg-[var(--glass-bg-hover)]"
-              @click="handleDelete(r.recipient_id)"
+              @click="openDeleteDialog(r.recipient_id)"
               aria-label="Supprimer"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -211,6 +224,49 @@ onMounted(fetchRecipients)
     </div>
 
     <FloatingActionButton aria-label="Ajouter un destinataire" @click="openCreate" />
+
+    <!-- Delete confirmation dialog -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div
+          v-if="showDeleteDialog"
+          class="overlay flex items-center justify-center px-6"
+          @click.self="showDeleteDialog = false"
+        >
+          <Transition name="scale-up">
+            <div v-if="showDeleteDialog" class="glass rounded-[24px] p-6 w-full max-w-[360px] flex flex-col gap-4">
+              <div class="w-12 h-12 rounded-full bg-red-500/15 flex items-center justify-center mx-auto">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-red-400">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+                </svg>
+              </div>
+              <div class="text-center flex flex-col gap-1.5">
+                <h2 class="text-[17px] font-bold text-app-primary">Supprimer le destinataire ?</h2>
+                <p class="text-[14px] text-app-muted leading-snug">Cette action est irréversible. Le destinataire sera définitivement supprimé.</p>
+              </div>
+              <div class="flex flex-col gap-2.5">
+                <button
+                  @click="handleDelete"
+                  :disabled="deleteLoading"
+                  class="w-full flex items-center justify-center gap-2 py-[13px] rounded-[14px] bg-red-500 text-white text-[15px] font-semibold cursor-pointer transition-opacity active:opacity-80 border-none disabled:opacity-60"
+                >
+                  <span v-if="deleteLoading" class="btn-spinner border-white/40 border-t-white" />
+                  <span v-else>Supprimer</span>
+                </button>
+                <button
+                  @click="showDeleteDialog = false"
+                  :disabled="deleteLoading"
+                  class="w-full flex items-center justify-center py-[13px] rounded-[14px] bg-transparent border border-[var(--glass-border)] text-app-muted text-[15px] font-medium cursor-pointer transition-colors hover:text-app-primary hover:border-[var(--primary-30)] disabled:opacity-60"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Sheet -->
     <ModalSheet v-model="showSheet" :title="editingRecipient ? 'Modifier' : 'Nouveau destinataire'" max-width="430px">
