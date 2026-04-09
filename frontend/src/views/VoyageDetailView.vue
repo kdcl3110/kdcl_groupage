@@ -5,10 +5,13 @@ import AppLayout from '@/components/layout/AppLayout.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
 import LoadBar from '@/components/common/LoadBar.vue'
 import ReportSheet from '@/components/common/ReportSheet.vue'
+import TravelFormSheet from '@/components/travel/TravelFormSheet.vue'
+import type { TravelFormData } from '@/components/travel/TravelFormSheet.vue'
 import { travelsApi } from '@/api/travels'
 import { packagesApi } from '@/api/packages'
 import { useAuthStore } from '@/stores/auth'
 import { useToastStore, apiError } from '@/stores/toast'
+import { useCurrencyStore } from '@/stores/currency'
 import type { Travel, Package } from '@/types'
 import type { TravelCreator } from '@/types'
 
@@ -17,6 +20,7 @@ import type { TravelCreator } from '@/types'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const currencyStore = useCurrencyStore()
 
 const isManager = computed(() => auth.user?.role === 'freight_forwarder' || auth.user?.role === 'admin')
 const isClient  = computed(() => auth.user?.role === 'client')
@@ -48,22 +52,36 @@ const reassignTravelsLoading   = ref(false)
 const reassignTargetTravel     = ref<Travel | null>(null)
 const reassignLoading          = ref(false)
 
-const travelActions = computed(() => {
+// ─── Status sheet ─────────────────────────────────────────────────────────────
+const showStatusSheet = ref(false)
+
+type StatusAction = {
+  target: string
+  label: string
+  desc: string
+  style: 'primary' | 'secondary' | 'danger'
+  icon: 'truck' | 'check' | 'lock' | 'unlock' | 'x'
+}
+
+const STATUS_ACTIONS: Record<string, StatusAction[]> = {
+  open: [
+    { target: 'full',       label: 'Marquer complet',      desc: 'Fermer le voyage aux nouvelles soumissions',   style: 'secondary', icon: 'lock'   },
+    { target: 'in_transit', label: 'Démarrer le transit',  desc: 'Le voyage est en route vers la destination',   style: 'primary',  icon: 'truck'  },
+    { target: 'cancelled',  label: 'Annuler le voyage',    desc: 'Annuler définitivement ce voyage',             style: 'danger',   icon: 'x'      },
+  ],
+  full: [
+    { target: 'open',       label: 'Rouvrir',              desc: 'Accepter à nouveau des soumissions de colis',  style: 'secondary', icon: 'unlock' },
+    { target: 'in_transit', label: 'Démarrer le transit',  desc: 'Le voyage est en route vers la destination',   style: 'primary',  icon: 'truck'  },
+    { target: 'cancelled',  label: 'Annuler le voyage',    desc: 'Annuler définitivement ce voyage',             style: 'danger',   icon: 'x'      },
+  ],
+  in_transit: [
+    { target: 'delivered',  label: 'Marquer livré',        desc: 'Les colis sont arrivés à destination',         style: 'primary',  icon: 'check'  },
+  ],
+}
+
+const travelActions = computed<StatusAction[]>(() => {
   if (!travel.value) return []
-  const s = travel.value.status
-  if (s === 'open' || s === 'full') {
-    return [
-      { label: 'Marquer en transit', target: 'in_transit', primary: true },
-      { label: 'Annuler', target: 'cancelled', primary: false },
-    ]
-  }
-  if (s === 'in_transit') {
-    return [
-      { label: 'Marquer livré', target: 'delivered', primary: true },
-      { label: 'Annuler', target: 'cancelled', primary: false },
-    ]
-  }
-  return []
+  return STATUS_ACTIONS[travel.value.status] ?? []
 })
 
 async function updateTravelStatus(newStatus: string) {
@@ -89,6 +107,7 @@ async function updateTravelStatus(newStatus: string) {
 }
 
 function handleActionClick(target: string) {
+  showStatusSheet.value = false
   if (target === 'cancelled') {
     if (inTravelPackages.value.length > 0) {
       openReassignDialog()
@@ -322,6 +341,92 @@ function shareTravel() {
   }
 }
 
+// ─── Edit travel ─────────────────────────────────────────────────────────────
+const showEditSheet = ref(false)
+const editLoading   = ref(false)
+const editError     = ref('')
+
+const canEdit = computed(() =>
+  isManager.value &&
+  travel.value &&
+  travel.value.status !== 'delivered' &&
+  travel.value.status !== 'cancelled',
+)
+
+const editInitialValues = computed((): Partial<TravelFormData> | undefined => {
+  const t = travel.value
+  if (!t) return undefined
+  return {
+    transport_type: t.transport_type,
+    origin_country_id: String(t.origin_country_id),
+    destination_country_id: String(t.destination_country_id),
+    departure_date: t.departure_date ? t.departure_date.split('T')[0] : '',
+    estimated_arrival_date: t.estimated_arrival_date ? t.estimated_arrival_date.split('T')[0] : '',
+    max_weight: String(t.max_weight),
+    max_volume: String(t.max_volume),
+    price_per_unit: t.price_per_unit != null ? String(t.price_per_unit) : '',
+    itinerary: t.itinerary ?? '',
+    container: t.container ?? '',
+    min_load_percentage: String(t.min_load_percentage),
+    max_load_percentage: String(t.max_load_percentage),
+  }
+})
+
+async function handleEdit(data: TravelFormData) {
+  if (!travel.value) return
+  editError.value = ''
+  if (!data.origin_country_id || !data.destination_country_id) {
+    editError.value = 'Les pays d\'origine et de destination sont obligatoires.'
+    return
+  }
+  if (data.origin_country_id === data.destination_country_id) {
+    editError.value = 'Le pays d\'origine et le pays de destination doivent être différents.'
+    return
+  }
+  if (data.departure_date && data.estimated_arrival_date) {
+    if (new Date(data.estimated_arrival_date) <= new Date(data.departure_date)) {
+      editError.value = 'La date d\'arrivée estimée doit être postérieure à la date de départ.'
+      return
+    }
+  }
+  if (!data.max_weight || parseFloat(data.max_weight) <= 0) {
+    editError.value = 'Le poids maximum doit être supérieur à 0.'
+    return
+  }
+  if (!data.max_volume || parseFloat(data.max_volume) <= 0) {
+    editError.value = 'Le volume maximum doit être supérieur à 0.'
+    return
+  }
+  editLoading.value = true
+  try {
+    const payload: Record<string, unknown> = {
+      transport_type: data.transport_type,
+      origin_country_id: parseInt(data.origin_country_id),
+      destination_country_id: parseInt(data.destination_country_id),
+      max_weight: parseFloat(data.max_weight),
+      max_volume: parseFloat(data.max_volume),
+      min_load_percentage: parseInt(data.min_load_percentage, 10),
+      max_load_percentage: parseInt(data.max_load_percentage, 10),
+      itinerary: data.itinerary.trim() || null,
+      container: data.container.trim() || null,
+      departure_date: data.departure_date || null,
+      estimated_arrival_date: data.estimated_arrival_date || null,
+      price_per_unit: data.price_per_unit && parseFloat(data.price_per_unit) > 0
+        ? parseFloat(data.price_per_unit)
+        : null,
+    }
+    await travelsApi.update(travel.value.travel_id, payload)
+    const { data: updated } = await travelsApi.getById(travelId.value)
+    travel.value = updated
+    showEditSheet.value = false
+    toast.success('Voyage mis à jour.')
+  } catch (err: unknown) {
+    editError.value = apiError(err, 'Erreur lors de la mise à jour du voyage.')
+  } finally {
+    editLoading.value = false
+  }
+}
+
 async function fetchData() {
   loading.value = true
   error.value = ''
@@ -394,6 +499,30 @@ onMounted(fetchData)
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <StatusBadge :status="travel.status" />
+              <!-- Bouton changer le statut (groupeur uniquement) -->
+              <button
+                v-if="isManager && travelActions.length > 0"
+                class="w-8 h-8 rounded-full glass flex items-center justify-center cursor-pointer border-none text-app-muted transition-colors hover:text-app-primary shrink-0"
+                @click="showStatusSheet = true"
+                aria-label="Changer le statut du voyage"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                </svg>
+              </button>
+              <!-- Bouton modifier (groupeur uniquement) -->
+              <button
+                v-if="canEdit"
+                class="w-8 h-8 rounded-full glass flex items-center justify-center cursor-pointer border-none text-app-muted transition-colors hover:text-app-primary shrink-0"
+                @click="showEditSheet = true"
+                aria-label="Modifier le voyage"
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
+              </button>
               <!-- Bouton partager -->
               <button
                 class="w-8 h-8 rounded-full glass flex items-center justify-center cursor-pointer border-none text-app-muted transition-colors hover:text-app-primary shrink-0"
@@ -544,15 +673,15 @@ onMounted(fetchData)
                     <div class="flex items-center gap-1.5 text-xs text-app-faint mt-0.5">
                       <span>{{ pkg.weight }} kg</span><span>·</span>
                       <span>{{ pkg.volume }} m³</span><span>·</span>
-                      <span>{{ pkg.declared_value }} €</span>
+                      <span>{{ currencyStore.formatAmount(pkg.declared_value) }}</span>
                       <template v-if="travel?.price_per_unit">
                         <span>·</span>
                         <span class="text-amber-400 font-semibold">
-                          ~{{ (
+                          ~{{ currencyStore.formatAmount(
                             Number(travel.price_per_unit) *
                             (travel.transport_type === 'plane' ? Number(pkg.weight) : Number(pkg.volume)) *
                             ({ normal: 1, fragile: 1.2, tres_fragile: 1.5 }[pkg.fragility] ?? 1)
-                          ).toFixed(2) }} €
+                          ) }}
                         </span>
                       </template>
                     </div>
@@ -618,10 +747,10 @@ onMounted(fetchData)
               <div class="flex items-center gap-1.5 text-xs text-app-faint">
                 <span>{{ pkg.weight }} kg</span><span>·</span>
                 <span>{{ pkg.volume }} m³</span><span>·</span>
-                <span>{{ pkg.declared_value }} €</span>
+                <span>{{ currencyStore.formatAmount(pkg.declared_value) }}</span>
                 <template v-if="pkg.price != null">
                   <span>·</span>
-                  <span class="text-[var(--primary)] font-semibold">{{ Number(pkg.price).toFixed(2) }} €</span>
+                  <span class="text-[var(--primary)] font-semibold">{{ currencyStore.formatAmount(Number(pkg.price)) }}</span>
                 </template>
               </div>
 
@@ -659,51 +788,109 @@ onMounted(fetchData)
           </div>
         </div>
 
-        <!-- Travel status management -->
-        <template v-if="isManager && travelActions.length > 0">
-          <div class="glass rounded-[20px] p-5 flex flex-col gap-4">
-            <h3 class="text-base font-bold text-app-primary">Gestion du statut</h3>
-
-            <div v-if="statusError" class="flex items-center gap-2 px-3.5 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"/>
-                <line x1="12" y1="8" x2="12" y2="12"/>
-                <line x1="12" y1="16" x2="12.01" y2="16"/>
-              </svg>
-              {{ statusError }}
-            </div>
-
-            <div class="flex flex-col gap-2.5">
-              <template v-for="action in travelActions" :key="action.target">
-                <button
-                  v-if="action.primary"
-                  class="btn-primary w-full flex items-center justify-center gap-2"
-                  :disabled="statusLoading"
-                  @click="handleActionClick(action.target)"
-                >
-                  <svg
-                    v-if="statusLoading"
-                    class="animate-spin"
-                    width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
-                  >
-                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
-                  </svg>
-                  {{ action.label }}
-                </button>
-                <button
-                  v-else
-                  class="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-[12px] text-sm font-semibold cursor-pointer transition-all bg-[rgba(239,68,68,0.1)] border-[1.5px] border-[rgba(239,68,68,0.25)] text-red-400 hover:bg-[rgba(239,68,68,0.15)] active:scale-[0.98]"
-                  :disabled="statusLoading"
-                  @click="handleActionClick(action.target)"
-                >
-                  {{ action.label }}
-                </button>
-              </template>
-            </div>
-          </div>
-        </template>
       </template>
     </div>
+
+    <!-- ── Status change sheet ── -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showStatusSheet" class="overlay flex items-end md:items-center justify-center" @click.self="showStatusSheet = false">
+          <Transition name="slide-up">
+            <div v-if="showStatusSheet" class="sheet w-full max-w-[480px] md:rounded-3xl rounded-t-3xl flex flex-col">
+              <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
+
+              <!-- Header -->
+              <div class="flex items-center justify-between px-5 pt-4 pb-3 shrink-0">
+                <div>
+                  <h2 class="text-[17px] font-extrabold text-app-primary">Changer le statut</h2>
+                  <p class="text-[12px] text-app-muted mt-0.5">
+                    Statut actuel :
+                    <StatusBadge :status="travel?.status ?? ''" class="ml-1" />
+                  </p>
+                </div>
+                <button class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none text-lg leading-none" @click="showStatusSheet = false">×</button>
+              </div>
+
+              <div class="border-t border-[var(--glass-border)]" />
+
+              <!-- Error -->
+              <div v-if="statusError" class="mx-4 mt-3 flex items-center gap-2 px-3 py-2.5 bg-red-500/10 border border-red-500/25 rounded-[10px] text-[13px] text-red-400">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                {{ statusError }}
+              </div>
+
+              <!-- Actions -->
+              <div class="px-4 py-4 flex flex-col gap-3">
+                <button
+                  v-for="action in travelActions"
+                  :key="action.target"
+                  :disabled="statusLoading"
+                  class="flex items-center gap-4 px-4 py-3.5 rounded-[16px] border cursor-pointer transition-all text-left w-full disabled:opacity-50"
+                  :class="{
+                    'bg-[var(--primary-10)] border-[var(--primary-35)] hover:bg-[var(--primary-15)] active:bg-[var(--primary-20)]': action.style === 'primary',
+                    'bg-white/[0.04] border-[var(--glass-border)] hover:bg-white/[0.07]': action.style === 'secondary',
+                    'bg-red-500/10 border-red-500/25 hover:bg-red-500/15': action.style === 'danger',
+                  }"
+                  @click="handleActionClick(action.target)"
+                >
+                  <!-- Icon -->
+                  <div
+                    class="w-10 h-10 rounded-[12px] flex items-center justify-center shrink-0"
+                    :class="{
+                      'bg-[var(--primary-15)] text-[var(--primary)]': action.style === 'primary',
+                      'bg-white/[0.06] text-app-muted': action.style === 'secondary',
+                      'bg-red-500/15 text-red-400': action.style === 'danger',
+                    }"
+                  >
+                    <!-- truck -->
+                    <svg v-if="action.icon === 'truck'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/>
+                      <circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/>
+                    </svg>
+                    <!-- check -->
+                    <svg v-else-if="action.icon === 'check'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                    <!-- lock -->
+                    <svg v-else-if="action.icon === 'lock'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                    </svg>
+                    <!-- unlock -->
+                    <svg v-else-if="action.icon === 'unlock'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                      <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                    </svg>
+                    <!-- x -->
+                    <svg v-else-if="action.icon === 'x'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                    </svg>
+                  </div>
+
+                  <!-- Text -->
+                  <div class="flex-1 min-w-0">
+                    <p class="text-[14px] font-bold"
+                      :class="{
+                        'text-[var(--primary)]': action.style === 'primary',
+                        'text-app-primary': action.style === 'secondary',
+                        'text-red-400': action.style === 'danger',
+                      }"
+                    >{{ action.label }}</p>
+                    <p class="text-[12px] text-app-muted mt-0.5">{{ action.desc }}</p>
+                  </div>
+
+                  <!-- Spinner -->
+                  <svg v-if="statusLoading" class="animate-spin shrink-0 text-app-muted" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+                  </svg>
+                  <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint shrink-0">
+                    <polyline points="9 18 15 12 9 6"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- Cancel confirmation dialog -->
     <Teleport to="body">
@@ -894,7 +1081,7 @@ onMounted(fetchData)
                     </div>
                     <div class="flex flex-col gap-0.5">
                       <span class="text-[10px] text-app-muted uppercase tracking-[0.05em]">Valeur déclarée</span>
-                      <span class="text-sm font-semibold text-app-primary">{{ pkgDetail.declared_value }} €</span>
+                      <span class="text-sm font-semibold text-app-primary">{{ currencyStore.formatAmount(pkgDetail.declared_value) }}</span>
                     </div>
                   </div>
                   <div v-if="pkgDetail.special_instructions" class="text-[12px] text-app-muted border-t border-[var(--glass-border)] pt-2 mt-1">
@@ -1087,6 +1274,18 @@ onMounted(fetchData)
         Signaler ce voyage
       </button>
     </div>
+
+    <!-- Edit travel sheet -->
+    <TravelFormSheet
+      v-model="showEditSheet"
+      title="Modifier le voyage"
+      submit-label="Enregistrer"
+      loading-text="Enregistrement..."
+      :loading="editLoading"
+      :error="editError"
+      :initial-values="editInitialValues"
+      @submit="handleEdit"
+    />
 
     <!-- Report sheet -->
     <ReportSheet

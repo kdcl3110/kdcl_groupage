@@ -43,7 +43,22 @@ export const env = {
   },
 
   app: {
-    frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+    frontendUrl: process.env.FRONTEND_URL ?? 'http://localhost:4200',
+  },
+
+  stripe: {
+    secretKey:     process.env.STRIPE_SECRET_KEY ?? '',
+    webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+  },
+
+  notchpay: {
+    publicKey:  process.env.NOTCHPAY_PUBLIC_KEY ?? '',
+    privateKey: process.env.NOTCHPAY_PRIVATE_KEY ?? '',
+    hash:       process.env.NOTCHPAY_HASH ?? '',
+  },
+
+  exchangeRate: {
+    apiUrl: process.env.EXCHANGE_RATE_API_URL ?? 'https://open.er-api.com/v6/latest/USD',
   },
 
   isDev(): boolean {

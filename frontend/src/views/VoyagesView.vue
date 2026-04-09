@@ -1,20 +1,18 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TravelCard from '@/components/travel/TravelCard.vue'
-import SearchableSelect from '@/components/common/SearchableSelect.vue'
-import ModalSheet from '@/components/common/ModalSheet.vue'
+import TravelFormSheet from '@/components/travel/TravelFormSheet.vue'
+import type { TravelFormData } from '@/components/travel/TravelFormSheet.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import ErrorAlert from '@/components/common/ErrorAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import RefreshButton from '@/components/common/RefreshButton.vue'
 import FloatingActionButton from '@/components/common/FloatingActionButton.vue'
 import { AlertCircle, Ship } from 'lucide-vue-next'
 import { travelsApi } from '@/api/travels'
 import { packagesApi } from '@/api/packages'
-import { countriesApi } from '@/api/countries'
 import { useAuthStore } from '@/stores/auth'
-import type { Travel, Package, Country } from '@/types'
+import type { Travel, Package } from '@/types'
 
 const auth = useAuthStore()
 const isManager = computed(() => auth.user?.role === 'freight_forwarder' || auth.user?.role === 'admin')
@@ -106,91 +104,40 @@ async function fetchTravels(reset = true) {
 // Quand le manager change le filtre de statut, on recharge depuis le début
 watch(activeFilter, () => { if (isManager.value) fetchTravels(true) })
 
-//  Countries 
-const countries = ref<Country[]>([])
-async function fetchCountries() {
-  try {
-    const { data } = await countriesApi.getAll()
-    countries.value = data.filter(c => c.is_active)
-  } catch {
-    // non-blocking
-  }
-}
-
-// Creation sheet 
+// Creation sheet
 const showSheet = ref(false)
 const formLoading = ref(false)
 const formError = ref('')
-const showAdvanced = ref(false)
 const todayStr = new Date().toISOString().split('T')[0]
 
-const form = reactive({
-  transport_type: 'ship' as 'ship' | 'plane',
-  origin_country_id: '',
-  destination_country_id: '',
-  departure_date: '',
-  estimated_arrival_date: '',
-  max_weight: '',
-  max_volume: '',
-  price_per_unit: '',
-  itinerary: '',
-  container: '',
-  min_load_percentage: '0',
-  max_load_percentage: '100',
-})
-
-function openSheet() {
-  resetForm()
-  fetchCountries()
-  showSheet.value = true
-}
-
-function resetForm() {
-  form.transport_type = 'ship'
-  form.origin_country_id = ''
-  form.destination_country_id = ''
-  form.departure_date = ''
-  form.estimated_arrival_date = ''
-  form.max_weight = ''
-  form.max_volume = ''
-  form.price_per_unit = ''
-  form.itinerary = ''
-  form.container = ''
-  form.min_load_percentage = '0'
-  form.max_load_percentage = '100'
+async function handleCreate(data: TravelFormData) {
   formError.value = ''
-  formLoading.value = false
-  showAdvanced.value = false
-}
-
-async function handleCreate() {
-  formError.value = ''
-  if (!form.origin_country_id || !form.destination_country_id) {
+  if (!data.origin_country_id || !data.destination_country_id) {
     formError.value = 'Les pays d\'origine et de destination sont obligatoires.'
     return
   }
-  if (form.origin_country_id === form.destination_country_id) {
+  if (data.origin_country_id === data.destination_country_id) {
     formError.value = 'Le pays d\'origine et le pays de destination doivent être différents.'
     return
   }
-  if (form.departure_date) {
+  if (data.departure_date) {
     const today = new Date(); today.setHours(0, 0, 0, 0)
-    if (new Date(form.departure_date) < today) {
+    if (new Date(data.departure_date) < today) {
       formError.value = 'La date de départ ne peut pas être antérieure à aujourd\'hui.'
       return
     }
   }
-  if (form.departure_date && form.estimated_arrival_date) {
-    if (new Date(form.estimated_arrival_date) <= new Date(form.departure_date)) {
+  if (data.departure_date && data.estimated_arrival_date) {
+    if (new Date(data.estimated_arrival_date) <= new Date(data.departure_date)) {
       formError.value = 'La date d\'arrivée estimée doit être postérieure à la date de départ.'
       return
     }
   }
-  if (!form.max_weight || parseFloat(form.max_weight) <= 0) {
+  if (!data.max_weight || parseFloat(data.max_weight) <= 0) {
     formError.value = 'Le poids maximum doit être supérieur à 0.'
     return
   }
-  if (!form.max_volume || parseFloat(form.max_volume) <= 0) {
+  if (!data.max_volume || parseFloat(data.max_volume) <= 0) {
     formError.value = 'Le volume maximum doit être supérieur à 0.'
     return
   }
@@ -198,23 +145,22 @@ async function handleCreate() {
   formLoading.value = true
   try {
     const payload: Record<string, unknown> = {
-      transport_type: form.transport_type,
-      origin_country_id: parseInt(form.origin_country_id),
-      destination_country_id: parseInt(form.destination_country_id),
-      max_weight: parseFloat(form.max_weight),
-      max_volume: parseFloat(form.max_volume),
-      min_load_percentage: parseInt(form.min_load_percentage, 10),
-      max_load_percentage: parseInt(form.max_load_percentage, 10),
+      transport_type: data.transport_type,
+      origin_country_id: parseInt(data.origin_country_id),
+      destination_country_id: parseInt(data.destination_country_id),
+      max_weight: parseFloat(data.max_weight),
+      max_volume: parseFloat(data.max_volume),
+      min_load_percentage: parseInt(data.min_load_percentage, 10),
+      max_load_percentage: parseInt(data.max_load_percentage, 10),
     }
-    if (form.departure_date) payload.departure_date = form.departure_date
-    if (form.estimated_arrival_date) payload.estimated_arrival_date = form.estimated_arrival_date
-    if (form.price_per_unit && parseFloat(form.price_per_unit) > 0) payload.price_per_unit = parseFloat(form.price_per_unit)
-    if (form.itinerary.trim()) payload.itinerary = form.itinerary.trim()
-    if (form.container.trim()) payload.container = form.container.trim()
+    if (data.departure_date) payload.departure_date = data.departure_date
+    if (data.estimated_arrival_date) payload.estimated_arrival_date = data.estimated_arrival_date
+    if (data.price_per_unit && parseFloat(data.price_per_unit) > 0) payload.price_per_unit = parseFloat(data.price_per_unit)
+    if (data.itinerary.trim()) payload.itinerary = data.itinerary.trim()
+    if (data.container.trim()) payload.container = data.container.trim()
 
     await travelsApi.create(payload)
     showSheet.value = false
-    resetForm()
     await fetchTravels()
   } catch (err: unknown) {
     const e = err as { response?: { data?: { message?: string } } }
@@ -323,213 +269,18 @@ onMounted(fetchTravels)
     </div>
 
     <!-- FAB -->
-    <FloatingActionButton v-if="isManager" aria-label="Nouveau voyage" @click="openSheet" />
+    <FloatingActionButton v-if="isManager" aria-label="Nouveau voyage" @click="showSheet = true" />
 
     <!-- Creation sheet -->
-    <ModalSheet v-model="showSheet" title="Nouveau voyage">
-
-      <div class="px-5 py-5 flex flex-col gap-5">
-
-                <!-- Transport type -->
-                <div class="flex flex-col gap-2">
-                  <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Type de transport</label>
-                  <div class="flex gap-2">
-                    <button
-                      class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[12px] border-[1.5px] text-sm font-semibold transition-all cursor-pointer"
-                      :class="form.transport_type === 'ship'
-                        ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)]'
-                        : 'bg-transparent border-[var(--glass-border)] text-app-muted'"
-                      @click="form.transport_type = 'ship'"
-                      type="button"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M2 21c.6.5 1.2 1 2.5 1C7 22 7 20 9.5 20c2.6 0 2.4 2 5 2 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>
-                        <path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.9.94 5.34 2.81 7.76"/>
-                        <path d="M19 13V7l-7-3-7 3v6"/>
-                        <line x1="12" y1="10" x2="12" y2="4"/>
-                      </svg>
-                      Maritime
-                    </button>
-                    <button
-                      class="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-[12px] border-[1.5px] text-sm font-semibold transition-all cursor-pointer"
-                      :class="form.transport_type === 'plane'
-                        ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)]'
-                        : 'bg-transparent border-[var(--glass-border)] text-app-muted'"
-                      @click="form.transport_type = 'plane'"
-                      type="button"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M17.8 19.2 16 11l3.5-3.5C21 6 21 4 19 2c-2-2-4-2-5.5-.5L10 5 1.8 6.2c-.5.1-.9.5-.9 1 0 .3.1.6.3.8l1.6 1.7 2.9-.7 1.2 1.3-3.5 3.5L5 18l3.5-.5L12 21l1.7 1.6c.2.2.5.3.8.3.5 0 .9-.4 1-.9z"/>
-                      </svg>
-                      Aérien
-                    </button>
-                  </div>
-                </div>
-
-                <!-- Origin / Destination -->
-                <div class="grid grid-cols-2 gap-3">
-                  <div class="flex flex-col gap-2">
-                    <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Origine</label>
-                    <SearchableSelect
-                      v-model="form.origin_country_id"
-                      :options="countries.map(c => ({ value: String(c.country_id), label: c.name }))"
-                      placeholder="Rechercher…"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Destination</label>
-                    <SearchableSelect
-                      v-model="form.destination_country_id"
-                      :options="countries.map(c => ({ value: String(c.country_id), label: c.name }))"
-                      placeholder="Rechercher…"
-                    />
-                  </div>
-                </div>
-
-                <!-- Dates -->
-                <div class="grid grid-cols-2 gap-3">
-                  <div class="flex flex-col gap-2">
-                    <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Départ</label>
-                    <input
-                      v-model="form.departure_date"
-                      type="date"
-                      class="input-field"
-                      :min="todayStr"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Arrivée estimée</label>
-                    <input
-                      v-model="form.estimated_arrival_date"
-                      type="date"
-                      class="input-field"
-                      :min="form.departure_date || todayStr"
-                    />
-                  </div>
-                </div>
-
-                <!-- Capacity -->
-                <div class="grid grid-cols-2 gap-3">
-                  <div class="flex flex-col gap-2">
-                    <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Poids max (kg)</label>
-                    <input
-                      v-model="form.max_weight"
-                      type="number"
-                      min="0"
-                      step="0.1"
-                      class="input-field"
-                      placeholder="Ex: 5000"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Volume max (m³)</label>
-                    <input
-                      v-model="form.max_volume"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      class="input-field"
-                      placeholder="Ex: 20"
-                    />
-                  </div>
-                </div>
-
-                <!-- Price per unit -->
-                <div class="flex flex-col gap-2">
-                  <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">
-                    Prix par {{ form.transport_type === 'plane' ? 'kg' : 'm³' }} (€)
-                  </label>
-                  <div class="relative">
-                    <input
-                      v-model="form.price_per_unit"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      class="input-field pr-10"
-                      :placeholder="form.transport_type === 'plane' ? 'Ex: 8.50' : 'Ex: 120'"
-                    />
-                    <span class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-app-faint pointer-events-none">€</span>
-                  </div>
-                  <p class="text-[11px] text-app-faint">
-                    Laissez vide si le prix n'est pas encore défini. Le prix final du colis sera calculé à sa validation.
-                  </p>
-                </div>
-
-                <!-- Itinerary -->
-                <div class="flex flex-col gap-2">
-                  <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Itinéraire</label>
-                  <input
-                    v-model="form.itinerary"
-                    type="text"
-                    class="input-field"
-                    placeholder="Ex: Paris → Dakar via Las Palmas"
-                  />
-                </div>
-
-                <!-- Container -->
-                <div class="flex flex-col gap-2">
-                  <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Conteneur</label>
-                  <input
-                    v-model="form.container"
-                    type="text"
-                    class="input-field"
-                    placeholder="Ex: MSCU1234567"
-                  />
-                </div>
-
-                <!-- Advanced settings -->
-                <div class="flex flex-col gap-3">
-                  <button
-                    type="button"
-                    class="flex items-center gap-2 text-sm font-semibold text-app-muted cursor-pointer bg-transparent border-none p-0 w-fit transition-colors hover:text-app-primary"
-                    @click="showAdvanced = !showAdvanced"
-                  >
-                    <svg
-                      width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
-                      :style="showAdvanced ? 'transform: rotate(90deg)' : ''"
-                      style="transition: transform 0.2s;"
-                    >
-                      <polyline points="9 18 15 12 9 6"/>
-                    </svg>
-                    Paramètres avancés
-                  </button>
-
-                  <div v-if="showAdvanced" class="flex flex-col gap-3 pl-2 border-l-2 border-[var(--glass-border)]">
-                    <div class="grid grid-cols-2 gap-3">
-                      <div class="flex flex-col gap-2">
-                        <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Charge min (%)</label>
-                        <input
-                          v-model="form.min_load_percentage"
-                          type="number"
-                          min="0"
-                          max="100"
-                          class="input-field"
-                          placeholder="0"
-                        />
-                      </div>
-                      <div class="flex flex-col gap-2">
-                        <label class="text-sm font-semibold text-app-muted uppercase tracking-[0.05em]">Charge max (%)</label>
-                        <input
-                          v-model="form.max_load_percentage"
-                          type="number"
-                          min="0"
-                          max="100"
-                          class="input-field"
-                          placeholder="100"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <ErrorAlert :message="formError" />
-      </div>
-
-      <template #footer>
-        <AppButton :loading="formLoading" :full="true" loading-text="Création..." @click="handleCreate">
-          Créer le voyage
-        </AppButton>
-      </template>
-    </ModalSheet>
+    <TravelFormSheet
+      v-model="showSheet"
+      title="Nouveau voyage"
+      submit-label="Créer le voyage"
+      loading-text="Création..."
+      :loading="formLoading"
+      :error="formError"
+      :min-departure-date="todayStr"
+      @submit="handleCreate"
+    />
   </AppLayout>
 </template>

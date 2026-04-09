@@ -2,11 +2,21 @@ import { Op, fn, col } from 'sequelize';
 import { Travel, TravelStatus, TransportType, TravelAttributes } from '../../models/Travel.model';
 import { Country } from '../../models/Country.model';
 import { Package, PackageStatus } from '../../models/Package.model';
+import { Payment, PaymentStatus } from '../../models/Payment.model';
 import { UserRole } from '../../models/User.model';
 import { ForumMessage, ForumMessageType } from '../../models/ForumMessage.model';
 import { createAndPush } from '../notification/notification.helpers';
 import { AppError } from '../../middlewares/errorHandler';
 import type { CreateTravelDto, UpdateTravelDto, UpdateTravelStatusDto } from './travel.dto';
+// Lazy import to avoid circular dependency
+let _payoutService: import('../payout/payout.service').PayoutService | null = null;
+async function getPayoutService() {
+  if (!_payoutService) {
+    const mod = await import('../payout/payout.service');
+    _payoutService = mod.payoutService;
+  }
+  return _payoutService;
+}
 
 const STATUS_MESSAGES: Record<TravelStatus, string> = {
   [TravelStatus.OPEN]:       'Le voyage est de nouveau ouvert à la soumission de colis.',
@@ -240,6 +250,11 @@ export class TravelService {
 
     // Cascade sur les statuts des colis
     if (next === TravelStatus.IN_TRANSIT) {
+      // paid packages that weren't manually moved → auto-advance to in_travel then in_transit
+      await Package.update(
+        { status: PackageStatus.IN_TRAVEL },
+        { where: { travel_id: travelId, status: PackageStatus.PAID } },
+      );
       await Package.update(
         { status: PackageStatus.IN_TRANSIT },
         { where: { travel_id: travelId, status: PackageStatus.IN_TRAVEL } },
@@ -249,6 +264,10 @@ export class TravelService {
         { status: PackageStatus.DELIVERED },
         { where: { travel_id: travelId, status: PackageStatus.IN_TRANSIT } },
       );
+      // Trigger payout asynchronously (non-blocking — errors are caught and logged inside)
+      getPayoutService()
+        .then((svc) => svc.createPayoutForTravel(travelId))
+        .catch((err) => console.error(`[TravelService] Payout creation failed for travel #${travelId}:`, err));
     }
 
     // Message système dans le forum du voyage
@@ -267,6 +286,51 @@ export class TravelService {
   }
 
   private async handleCancellation(travelId: number, targetTravelId?: number): Promise<void> {
+    // 0. Expire pending payments for awaiting_payment packages, cancel paid packages (need refund)
+    const awaitingPayment = await Package.findAll({
+      where: { travel_id: travelId, status: PackageStatus.AWAITING_PAYMENT },
+      attributes: ['package_id', 'client_id', 'tracking_number'],
+    });
+    if (awaitingPayment.length > 0) {
+      await Payment.update(
+        { status: PaymentStatus.EXPIRED },
+        { where: { package_id: awaitingPayment.map((p) => p.package_id), status: PaymentStatus.PENDING } },
+      );
+      await Package.update(
+        { travel_id: null, status: PackageStatus.PENDING },
+        { where: { travel_id: travelId, status: PackageStatus.AWAITING_PAYMENT } },
+      );
+      await Promise.all(
+        awaitingPayment.map((pkg) =>
+          createAndPush(
+            pkg.client_id,
+            'Voyage annulé — colis en attente',
+            `Le voyage #${travelId} a été annulé. Votre colis ${pkg.tracking_number} repasse en attente — le paiement a été annulé.`,
+          ),
+        ),
+      );
+    }
+
+    const paidPackages = await Package.findAll({
+      where: { travel_id: travelId, status: PackageStatus.PAID },
+      attributes: ['package_id', 'client_id', 'tracking_number'],
+    });
+    if (paidPackages.length > 0) {
+      await Package.update(
+        { travel_id: null, status: PackageStatus.CANCELLED },
+        { where: { travel_id: travelId, status: PackageStatus.PAID } },
+      );
+      await Promise.all(
+        paidPackages.map((pkg) =>
+          createAndPush(
+            pkg.client_id,
+            'Voyage annulé — remboursement requis',
+            `Le voyage #${travelId} a été annulé. Votre colis ${pkg.tracking_number} avait déjà été payé. Notre équipe vous contactera pour le remboursement.`,
+          ),
+        ),
+      );
+    }
+
     // 1. Vérifier les colis engagés (in_travel)
     const inTravel = await Package.findAll({
       where: { travel_id: travelId, status: PackageStatus.IN_TRAVEL },

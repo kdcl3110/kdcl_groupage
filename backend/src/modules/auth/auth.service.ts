@@ -7,6 +7,7 @@ import { isValidPhoneNumber } from "libphonenumber-js";
 import { User, UserRole, UserStatus } from "../../models/User.model";
 import { env } from "../../configs/env.config";
 import { AppError } from "../../middlewares/errorHandler";
+import { sendPasswordResetEmail } from "../../services/email.service";
 import type {
   RegisterDto,
   LoginDto,
@@ -91,7 +92,11 @@ export class AuthService {
       reset_password_expires: new Date(Date.now() + RESET_TOKEN_EXPIRES_MS),
     });
 
-    // TODO: send rawToken by email in production
+    // Send reset email (non-blocking — don't expose send failures to the caller)
+    sendPasswordResetEmail(user.email, user.first_name, rawToken).catch((err) =>
+      console.error('[auth] Failed to send password reset email:', err),
+    );
+
     return {
       message: "If this email exists, a reset link has been sent",
       // Expose token only in development for testing

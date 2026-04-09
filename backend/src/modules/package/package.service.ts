@@ -5,6 +5,8 @@ import { Package, PackageStatus, FragilityLevel, FRAGILITY_MULTIPLIER } from '..
 import { Travel, TravelStatus, TransportType } from '../../models/Travel.model';
 import { Recipient } from '../../models/Recipient.model';
 import { User, UserRole } from '../../models/User.model';
+import { Payment, PaymentStatus } from '../../models/Payment.model';
+import { PlatformConfig } from '../../models/PlatformConfig.model';
 import { AppError } from '../../middlewares/errorHandler';
 import { createAndPush } from '../notification/notification.helpers';
 import type {
@@ -144,20 +146,52 @@ export class PackageService {
 
     const { travel, load } = await this.checkCapacity(pkg.travel_id!, Number(pkg.weight), Number(pkg.volume));
 
-    const computedPrice = this.computePrice(travel, pkg);
-    await pkg.update({ status: PackageStatus.IN_TRAVEL, price: computedPrice });
+    // Compute price in USD
+    const priceUsd = this.computePrice(travel, pkg);
+
+    // Get platform commission rate (default 5%)
+    const commissionRate = await PlatformConfig.getCommissionRate();
+    const amountUsd      = priceUsd ?? 0;
+    const commissionUsd  = round2(amountUsd * commissionRate);
+    const netUsd         = round2(amountUsd - commissionUsd);
+
+    // Get payment deadline from config (default 48h)
+    const deadlineCfg    = await PlatformConfig.findByPk('payment_deadline_hours');
+    const deadlineHours  = deadlineCfg ? parseInt(deadlineCfg.value, 10) : 48;
+    const deadline       = new Date(Date.now() + deadlineHours * 60 * 60 * 1000);
+
+    // Move package to awaiting_payment and save computed price
+    await pkg.update({ status: PackageStatus.AWAITING_PAYMENT, price: amountUsd });
+
+    // Reserve capacity on the travel
     await this.updateTravelStatusAfterAdd(travel, load, Number(pkg.weight), Number(pkg.volume));
+
+    // Create the pending payment record
+    await Payment.create({
+      package_id:               pkg.package_id,
+      client_id:                pkg.client_id,
+      groupeur_id:              travel.created_by,
+      travel_id:                travel.travel_id,
+      amount_usd:               amountUsd,
+      platform_commission_rate: commissionRate,
+      platform_commission_usd:  commissionUsd,
+      provider_fee_usd:         0, // determined when client chooses payment method
+      net_to_groupeur_usd:      netUsd,
+      status:                   PaymentStatus.PENDING,
+      deadline_at:              deadline,
+    });
 
     await this.notify(
       pkg.client_id,
-      'Colis validé',
-      `Votre colis ${pkg.tracking_number} a été validé et intégré au voyage #${pkg.travel_id}.`,
+      'Colis accepté — Paiement requis',
+      `Votre colis ${pkg.tracking_number} a été accepté. Vous avez ${deadlineHours}h pour effectuer le paiement de $${amountUsd.toFixed(2)}.`,
     );
 
     await pkg.reload({
       include: [
         { association: 'recipient', attributes: RECIPIENT_ATTRS },
-        { association: 'travel', attributes: TRAVEL_ATTRS },
+        { association: 'travel',    attributes: TRAVEL_ATTRS },
+        { association: 'payment' },
       ],
     });
 
@@ -345,8 +379,9 @@ export class PackageService {
     const pkg = await Package.findByPk(packageId);
     if (!pkg) throw new AppError(404, 'Package not found');
 
-    if (pkg.status !== PackageStatus.SUBMITTED) {
-      throw new AppError(400, `Only submitted packages can be rejected (current status: "${pkg.status}")`);
+    const rejectableStatuses = [PackageStatus.SUBMITTED, PackageStatus.AWAITING_PAYMENT];
+    if (!rejectableStatuses.includes(pkg.status as PackageStatus)) {
+      throw new AppError(400, `Only submitted or awaiting-payment packages can be rejected (current status: "${pkg.status}")`);
     }
 
     if (caller.role === UserRole.FREIGHT_FORWARDER && pkg.travel_id) {
@@ -356,7 +391,20 @@ export class PackageService {
       }
     }
 
+    const oldTravelId = pkg.travel_id;
+    const wasCommitted = pkg.status === PackageStatus.AWAITING_PAYMENT;
+
     await pkg.update({ status: PackageStatus.PENDING, travel_id: null });
+
+    // Cancel the pending payment if it exists
+    if (wasCommitted) {
+      await Payment.update(
+        { status: PaymentStatus.EXPIRED },
+        { where: { package_id: pkg.package_id, status: PaymentStatus.PENDING } },
+      );
+      // Free up capacity on the travel
+      if (oldTravelId) await this.reopenTravelIfNeeded(oldTravelId);
+    }
 
     await this.notify(
       pkg.client_id,
@@ -389,6 +437,7 @@ export class PackageService {
     }
 
     const ALLOWED_TRANSITIONS: Record<string, PackageStatus[]> = {
+      [PackageStatus.PAID]:       [PackageStatus.IN_TRAVEL],
       [PackageStatus.IN_TRAVEL]:  [PackageStatus.IN_TRANSIT],
       [PackageStatus.IN_TRANSIT]: [PackageStatus.DELIVERED, PackageStatus.RETURNED],
     };
@@ -502,8 +551,15 @@ export class PackageService {
   }
 
   private async computeLoad(travelId: number, travel: Travel): Promise<TravelLoad> {
+    // Count only packages that have committed capacity (accepted or beyond)
+    const COMMITTED_STATUSES = [
+      PackageStatus.AWAITING_PAYMENT,
+      PackageStatus.PAID,
+      PackageStatus.IN_TRAVEL,
+      PackageStatus.IN_TRANSIT,
+    ];
     const packages = await Package.findAll({
-      where: { travel_id: travelId, status: { [Op.notIn]: [PackageStatus.CANCELLED, PackageStatus.SUBMITTED] } },
+      where: { travel_id: travelId, status: { [Op.in]: COMMITTED_STATUSES } },
       attributes: ['weight', 'volume'],
     });
     const current_weight = packages.reduce((s, p) => s + Number(p.weight), 0);

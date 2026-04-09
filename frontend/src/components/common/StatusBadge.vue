@@ -13,10 +13,12 @@ const labelMap: Record<string, string> = {
   delivered: 'Livré',
   cancelled: 'Annulé',
   // Package statuses (French)
-  pending:   'En attente',
-  submitted: 'Soumis',
-  in_travel: 'En voyage',
-  returned:  'Retourné',
+  pending:          'En attente',
+  submitted:        'Soumis',
+  awaiting_payment: 'Paiement requis',
+  paid:             'Payé',
+  in_travel:        'En voyage',
+  returned:         'Retourné',
 }
 
 const label = computed(() => labelMap[props.status] ?? props.status)

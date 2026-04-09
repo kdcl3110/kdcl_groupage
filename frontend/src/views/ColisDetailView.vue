@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, reactive } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
-import ErrorAlert from '@/components/common/ErrorAlert.vue'
-import AppButton from '@/components/common/AppButton.vue'
-import ImagePicker from '@/components/common/ImagePicker.vue'
+import PackageFormSheet from '@/components/package/PackageFormSheet.vue'
+import PaymentSheet from '@/components/payment/PaymentSheet.vue'
+import type { PackageFormPayload, PackageFormInitialValues } from '@/components/package/PackageFormSheet.vue'
 import { packagesApi } from '@/api/packages'
 import { recipientsApi } from '@/api/recipients'
 import { travelsApi } from '@/api/travels'
 import { useToastStore, apiError } from '@/stores/toast'
+import { useAuthStore } from '@/stores/auth'
+import { useCurrencyStore } from '@/stores/currency'
 import type { Package, Recipient, Travel } from '@/types'
+
+const auth = useAuthStore()
+const currencyStore = useCurrencyStore()
+const isClient = computed(() => auth.user?.role === 'client')
 
 const route = useRoute()
 const router = useRouter()
@@ -43,27 +49,35 @@ function formatDate(date: string | null | undefined) {
 }
 
 const statusSteps = [
-  { key: 'created',   label: 'Créé' },
-  { key: 'submitted', label: 'Soumis' },
-  { key: 'in_travel', label: 'En voyage' },
-  { key: 'in_transit', label: 'En transit' },
-  { key: 'delivered', label: 'Livré' },
+  { key: 'created',          label: 'Créé' },
+  { key: 'submitted',        label: 'Soumis' },
+  { key: 'awaiting_payment', label: 'Accepté' },
+  { key: 'paid',             label: 'Payé' },
+  { key: 'in_travel',        label: 'En voyage' },
+  { key: 'in_transit',       label: 'En transit' },
+  { key: 'delivered',        label: 'Livré' },
 ]
 
 const currentStepIndex = computed(() => {
   if (!pkg.value) return -1
   const status = pkg.value.status
-  if (status === 'pending')    return 0
-  if (status === 'submitted')  return 1
-  if (status === 'in_travel')  return 2
-  if (status === 'in_transit') return 3
-  if (status === 'delivered')  return 4
+  if (status === 'pending')           return 0
+  if (status === 'submitted')         return 1
+  if (status === 'awaiting_payment')  return 2
+  if (status === 'paid')              return 3
+  if (status === 'in_travel')         return 4
+  if (status === 'in_transit')        return 5
+  if (status === 'delivered')         return 6
   return -1 // cancelled, returned
 })
 
 const canCancel = computed(() =>
   pkg.value?.status === 'pending' || pkg.value?.status === 'submitted'
 )
+
+// ─── Payment ──────────────────────────────────────────────────────────────────
+const showPaymentSheet = ref(false)
+const canPay = computed(() => isClient.value && pkg.value?.status === 'awaiting_payment')
 const canEdit = computed(() => pkg.value?.status === 'pending')
 const toast = useToastStore()
 
@@ -181,102 +195,50 @@ async function handleSubmit(travelId: number) {
 
 // ─── Edit sheet ───────────────────────────────────────────────────────────────
 const showEditSheet = ref(false)
-const editLoading = ref(false)
-const editError = ref('')
-const editForm = reactive({
-  description: '',
-  weight: '',
-  volume: '',
-  declared_value: '',
-  special_instructions: '',
+const editLoading   = ref(false)
+const editError     = ref('')
+
+const editInitialValues = computed((): PackageFormInitialValues | undefined => {
+  if (!pkg.value) return undefined
+  return {
+    description:        pkg.value.description,
+    weight:             String(pkg.value.weight),
+    volume:             String(pkg.value.volume),
+    declared_value:     String(pkg.value.declared_value),
+    special_instructions: pkg.value.special_instructions ?? '',
+    selectedRecipient:  recipient.value,
+    existingImages: [
+      pkg.value.image1 ?? null,
+      pkg.value.image2 ?? null,
+      pkg.value.image3 ?? null,
+      pkg.value.image4 ?? null,
+    ],
+  }
 })
-const editRecipients = ref<Recipient[]>([])
-const editRecipientsLoading = ref(false)
-const editSelectedRecipient = ref<Recipient | null>(null)
 
-// Images for edit form
-const editExistingImages = ref<(string | null)[]>([null, null, null, null])
-const editImgFiles       = ref<(File | null)[]>([null, null, null, null])
-const editImgRemoved     = ref<boolean[]>([false, false, false, false])
-const editHasImage1      = computed(() =>
-  !!editImgFiles.value[0] || (!editImgRemoved.value[0] && !!editExistingImages.value[0])
-)
-
-async function openEditSheet() {
-  if (!pkg.value) return
-  editForm.description = pkg.value.description
-  editForm.weight = String(pkg.value.weight)
-  editForm.volume = String(pkg.value.volume)
-  editForm.declared_value = String(pkg.value.declared_value)
-  editForm.special_instructions = pkg.value.special_instructions ?? ''
-  editSelectedRecipient.value = recipient.value
+async function handleEditSubmit(payload: PackageFormPayload) {
   editError.value = ''
-  // Set existing images BEFORE showing — ImagePicker will mount with correct prop
-  editExistingImages.value = [
-    pkg.value.image1 ?? null,
-    pkg.value.image2 ?? null,
-    pkg.value.image3 ?? null,
-    pkg.value.image4 ?? null,
-  ]
-  editImgFiles.value   = [null, null, null, null]
-  editImgRemoved.value = [false, false, false, false]
-  showEditSheet.value = true
-  editRecipientsLoading.value = true
-  try {
-    const { data } = await recipientsApi.getAll()
-    editRecipients.value = data
-  } catch {
-    // non-blocking
-  } finally {
-    editRecipientsLoading.value = false
-  }
-}
-
-async function handleEditSubmit() {
-  editError.value = ''
-  if (!editForm.description.trim()) {
-    editError.value = 'La description est requise.'
-    return
-  }
-  if (parseFloat(editForm.weight) <= 0) {
-    editError.value = 'Le poids doit être un nombre positif.'
-    return
-  }
-  if (parseFloat(editForm.volume) <= 0) {
-    editError.value = 'Le volume doit être un nombre positif.'
-    return
-  }
-  if (parseFloat(editForm.declared_value) < 0) {
-    editError.value = 'La valeur déclarée doit être positive ou nulle.'
-    return
-  }
-  if (!editHasImage1.value) {
-    editError.value = 'La première photo est obligatoire.'
-    return
-  }
   editLoading.value = true
   try {
     const fd = new FormData()
-    fd.append('description', editForm.description)
-    fd.append('weight', editForm.weight)
-    fd.append('volume', editForm.volume)
-    fd.append('declared_value', editForm.declared_value)
-    fd.append('special_instructions', editForm.special_instructions)
-    if (editSelectedRecipient.value) {
-      fd.append('recipient_id', String(editSelectedRecipient.value.recipient_id))
-    }
-    // Images
+    fd.append('description', payload.description)
+    fd.append('weight', payload.weight)
+    fd.append('volume', payload.volume)
+    fd.append('declared_value', payload.declared_value)
+    fd.append('special_instructions', payload.special_instructions)
+    fd.append('recipient_id', String(payload.recipient_id))
     for (let i = 0; i < 4; i++) {
       const field = `image${i + 1}`
-      if (editImgFiles.value[i]) {
-        fd.append(field, editImgFiles.value[i]!)
-      } else if (i > 0 && editImgRemoved.value[i]) {
+      if (payload.imgFiles[i]) {
+        fd.append(field, payload.imgFiles[i]!)
+      } else if (i > 0 && payload.imgRemoved[i]) {
         fd.append(`remove_${field}`, 'true')
       }
     }
     const { data } = await packagesApi.update(packageId.value, fd)
     pkg.value = data
-    if (editSelectedRecipient.value) recipient.value = editSelectedRecipient.value
+    const updatedRecipient = (await recipientsApi.getById(payload.recipient_id)).data
+    recipient.value = updatedRecipient
     showEditSheet.value = false
     toast.success('Colis modifié avec succès.')
   } catch (err) {
@@ -470,8 +432,34 @@ onMounted(fetchData)
             </div>
           </div>
 
+          <!-- Payment required banner -->
+          <div v-if="canPay" class="glass rounded-[20px] p-4 border border-amber-500/30 bg-amber-500/5 flex flex-col gap-3">
+            <div class="flex items-center gap-3">
+              <div class="w-9 h-9 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-amber-400">
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                  <line x1="1" y1="10" x2="23" y2="10"/>
+                </svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-amber-300">Paiement requis</p>
+                <p class="text-[12px] text-app-muted">{{ currencyStore.formatAmount(pkg.price ?? 0) }} · délai 48h après acceptation</p>
+              </div>
+            </div>
+            <button
+              @click="showPaymentSheet = true"
+              class="w-full flex items-center justify-center gap-2 py-[13px] rounded-[14px] bg-amber-500 text-white text-[15px] font-semibold cursor-pointer transition-opacity active:opacity-80 border-none"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+                <line x1="1" y1="10" x2="23" y2="10"/>
+              </svg>
+              Payer maintenant
+            </button>
+          </div>
+
           <!-- Cancelled / Returned badge -->
-          <div v-else class="glass rounded-[20px] p-4 flex items-center gap-3">
+          <div v-else-if="currentStepIndex < 0" class="glass rounded-[20px] p-4 flex items-center gap-3">
             <div
               class="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
               :class="pkg.status === 'cancelled' ? 'bg-red-500/15' : 'bg-amber-500/15'"
@@ -505,7 +493,7 @@ onMounted(fetchData)
               </div>
               <div class="flex flex-col gap-0.5">
                 <span class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Valeur déclarée</span>
-                <span class="text-[14px] font-bold text-app-primary">{{ pkg.declared_value }} €</span>
+                <span class="text-[14px] font-bold text-app-primary">{{ currencyStore.formatAmount(pkg.declared_value) }}</span>
               </div>
               <div class="flex flex-col gap-0.5">
                 <span class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Fragilité</span>
@@ -526,7 +514,7 @@ onMounted(fetchData)
                 <span v-if="!displayPrice.confirmed" class="text-[10px] text-amber-400 font-semibold">En attente de validation</span>
               </div>
               <p class="text-[22px] font-extrabold mt-1" :class="displayPrice.confirmed ? 'text-app-primary' : 'text-amber-400'">
-                {{ displayPrice.value.toFixed(2) }} €
+                {{ currencyStore.formatAmount(displayPrice.value) }}
               </p>
               <p v-if="!displayPrice.confirmed" class="text-[11px] text-app-faint mt-0.5">
                 Calculé d'après le tarif du voyage · Peut varier légèrement
@@ -632,7 +620,7 @@ onMounted(fetchData)
           <!-- EDIT BUTTON -->
           <button
             v-if="canEdit"
-            @click="openEditSheet"
+            @click="showEditSheet = true"
             class="w-full flex items-center justify-center gap-2 py-[14px] rounded-[20px] glass border-[1.5px] border-[var(--primary-30)] text-[var(--primary)] text-[15px] font-semibold cursor-pointer transition-colors active:bg-[var(--primary-10)]"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -658,6 +646,16 @@ onMounted(fetchData)
 
         </div>
       </template>
+
+      <!-- PAYMENT SHEET -->
+      <PaymentSheet
+        v-if="pkg"
+        v-model="showPaymentSheet"
+        :package-id="packageId"
+        :amount-usd="pkg.price ?? 0"
+        :deadline-at="pkg.payment?.deadline_at ?? ''"
+        @paid="fetchData"
+      />
 
       <!-- VOYAGE SELECTION SHEET -->
       <Teleport to="body">
@@ -741,125 +739,14 @@ onMounted(fetchData)
       </Teleport>
 
       <!-- EDIT SHEET -->
-      <Teleport to="body">
-        <Transition name="fade">
-          <div
-            v-if="showEditSheet"
-            class="overlay flex items-end md:items-center justify-center"
-            @click.self="showEditSheet = false"
-          >
-            <Transition name="slide-up">
-              <div v-if="showEditSheet" class="sheet w-full max-w-[480px] md:rounded-3xl rounded-t-3xl flex flex-col" style="max-height: 92dvh;">
-                <div class="w-9 h-1 bg-[var(--primary-30)] rounded-full mx-auto mt-4 shrink-0" />
-                <div class="flex items-center justify-between px-5 py-4 shrink-0">
-                  <h2 class="text-[17px] font-extrabold text-app-primary">Modifier le colis</h2>
-                  <button
-                    class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none text-lg leading-none"
-                    @click="showEditSheet = false"
-                  >×</button>
-                </div>
-                <div class="border-t border-[var(--glass-border)] shrink-0" />
-
-                <div class="flex-1 overflow-y-auto px-5 py-5 flex flex-col gap-4">
-
-                  <!-- Description -->
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Description *</label>
-                    <input v-model="editForm.description" type="text" class="input-field" placeholder="Ex: Vêtements, électronique..." :disabled="editLoading" />
-                  </div>
-
-                  <!-- Poids / Volume -->
-                  <div class="grid grid-cols-2 gap-3">
-                    <div class="flex flex-col gap-1.5">
-                      <label class="field-label">Poids (kg) *</label>
-                      <input v-model="editForm.weight" type="number" step="0.1" min="0.01" class="input-field" placeholder="0.0" :disabled="editLoading" />
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <label class="field-label">Volume (m³) *</label>
-                      <input v-model="editForm.volume" type="number" step="0.001" min="0.001" class="input-field" placeholder="0.000" :disabled="editLoading" />
-                    </div>
-                  </div>
-
-                  <!-- Valeur déclarée -->
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Valeur déclarée (€) *</label>
-                    <input v-model="editForm.declared_value" type="number" min="0" class="input-field" placeholder="0" :disabled="editLoading" />
-                  </div>
-
-                  <!-- Instructions spéciales -->
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Instructions spéciales</label>
-                    <textarea
-                      v-model="editForm.special_instructions"
-                      class="input-field"
-                      style="min-height: 72px; resize: none;"
-                      placeholder="Fragile, température contrôlée..."
-                      :disabled="editLoading"
-                    />
-                  </div>
-
-                  <!-- Photos -->
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Photos du colis</label>
-                    <p class="text-xs text-app-muted -mt-0.5">La première photo est obligatoire.</p>
-                    <div class="grid grid-cols-2 gap-2.5">
-                      <ImagePicker
-                        v-for="i in 4"
-                        :key="i"
-                        :model-value="editImgFiles[i - 1]"
-                        :existing="editExistingImages[i - 1]"
-                        :required="i === 1"
-                        :label="`Photo ${i}${i === 1 ? ' *' : ''}`"
-                        :disabled="editLoading"
-                        @update:model-value="editImgFiles[i - 1] = $event"
-                        @remove="editImgRemoved[i - 1] = true"
-                      />
-                    </div>
-                  </div>
-
-                  <!-- Destinataire -->
-                  <div class="flex flex-col gap-2">
-                    <label class="field-label">Destinataire</label>
-                    <div v-if="editRecipientsLoading" class="flex flex-col gap-2">
-                      <div v-for="i in 2" :key="i" class="skeleton h-[58px] rounded-[14px]" />
-                    </div>
-                    <div v-else class="flex flex-col gap-2 max-h-[200px] overflow-y-auto scrollbar-hide">
-                      <div
-                        v-for="r in editRecipients"
-                        :key="r.recipient_id"
-                        class="flex items-center gap-3 px-3.5 py-3 rounded-[14px] cursor-pointer transition-all border"
-                        :class="editSelectedRecipient?.recipient_id === r.recipient_id
-                          ? 'bg-[var(--primary-15)] border-[var(--primary)]'
-                          : 'glass-subtle border-transparent'"
-                        @click="editSelectedRecipient = r"
-                      >
-                        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary-30)] to-[var(--primary-15)] border border-[var(--primary-30)] flex items-center justify-center text-sm font-bold text-[var(--primary)] shrink-0">
-                          {{ r.first_name[0] }}{{ r.last_name[0] }}
-                        </div>
-                        <div class="flex-1 min-w-0">
-                          <p class="text-sm font-semibold text-app-primary truncate">{{ r.first_name }} {{ r.last_name }}</p>
-                          <p class="text-xs text-app-muted">{{ r.city }}, {{ r.country }}</p>
-                        </div>
-                        <div v-if="editSelectedRecipient?.recipient_id === r.recipient_id" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
-                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                            <polyline points="20 6 9 17 4 12"/>
-                          </svg>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <ErrorAlert :message="editError" />
-
-                  <AppButton :full="true" :loading="editLoading" loading-text="Enregistrement..." @click="handleEditSubmit">
-                    Enregistrer les modifications
-                  </AppButton>
-                </div>
-              </div>
-            </Transition>
-          </div>
-        </Transition>
-      </Teleport>
+      <PackageFormSheet
+        v-model="showEditSheet"
+        mode="edit"
+        :loading="editLoading"
+        :error="editError"
+        :initial-values="editInitialValues"
+        @submit="handleEditSubmit"
+      />
 
       <!-- CANCEL CONFIRMATION DIALOG -->
       <Teleport to="body">

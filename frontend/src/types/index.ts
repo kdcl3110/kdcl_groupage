@@ -83,6 +83,17 @@ export interface PackageClient {
   country: string
 }
 
+export type PackageStatus =
+  | 'pending'
+  | 'submitted'
+  | 'awaiting_payment'
+  | 'paid'
+  | 'in_travel'
+  | 'in_transit'
+  | 'delivered'
+  | 'returned'
+  | 'cancelled'
+
 export interface Package {
   package_id: number
   client_id: number
@@ -93,16 +104,17 @@ export interface Package {
   description: string
   weight: number
   volume: number
-  declared_value: number
-  status: 'pending' | 'submitted' | 'in_travel' | 'in_transit' | 'delivered' | 'returned' | 'cancelled'
+  declared_value: number  // stored in USD
+  status: PackageStatus
   fragility: 'normal' | 'fragile' | 'tres_fragile'
-  price: number | null
+  price: number | null    // computed price in USD (set when groupeur accepts)
   special_instructions: string | null
   image1: string
   image2: string | null
   image3: string | null
   image4: string | null
   creation_date: string
+  payment?: Payment | null
 }
 
 export interface Recipient {
@@ -143,4 +155,68 @@ export interface Notification {
   content: string
   is_read: boolean
   creation_date: string
+}
+
+// ─── Payment & Currency ──────────────────────────────────────────────────────
+
+export interface Currency {
+  currency_id: number
+  code: string    // 'USD', 'EUR', 'XAF'
+  name: string
+  symbol: string  // '$', '€', 'FCFA'
+  rate_to_usd: number
+  last_updated: string
+}
+
+export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded' | 'expired'
+export type PaymentProvider = 'stripe' | 'notchpay'
+
+export interface Payment {
+  payment_id: number
+  package_id: number
+  client_id: number
+  groupeur_id: number
+  travel_id: number
+  amount_usd: number
+  platform_commission_rate: number
+  platform_commission_usd: number
+  provider_fee_usd: number
+  net_to_groupeur_usd: number
+  provider: PaymentProvider | null
+  provider_intent_id: string | null
+  receipt_url: string | null
+  status: PaymentStatus
+  deadline_at: string
+  paid_at: string | null
+}
+
+export type PayoutAccountType = 'iban' | 'mobile_money'
+export type MobileOperator = 'mtn' | 'orange'
+export type PayoutStatus = 'pending' | 'processing' | 'completed' | 'failed'
+
+export interface PayoutAccount {
+  account_id: number
+  user_id: number
+  type: PayoutAccountType
+  account_holder_name: string
+  iban: string | null
+  mobile_number: string | null
+  mobile_operator: MobileOperator | null
+  country_code: string
+  is_default: boolean
+  is_verified: boolean
+}
+
+export interface Payout {
+  payout_id: number
+  travel_id: number
+  groupeur_id: number
+  payout_account_id: number | null
+  gross_amount_usd: number
+  provider_fee_usd: number
+  net_amount_usd: number
+  provider: string | null
+  provider_reference: string | null
+  status: PayoutStatus
+  completed_at: string | null
 }

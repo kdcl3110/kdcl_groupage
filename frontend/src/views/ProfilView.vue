@@ -10,13 +10,17 @@ import ErrorAlert from '@/components/common/ErrorAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
+import { useCurrencyStore } from '@/stores/currency'
 import { authApi } from '@/api/auth'
 import { usersApi } from '@/api/users'
+import { payoutAccountsApi } from '@/api/payouts'
+import type { PayoutAccount } from '@/types'
 import { useToastStore, apiError } from '@/stores/toast'
 
 const router = useRouter()
 const auth = useAuthStore()
 const themeStore = useThemeStore()
+const currencyStore = useCurrencyStore()
 
 const toast = useToastStore()
 const showLogoutDialog = ref(false)
@@ -175,6 +179,72 @@ async function handleChangePassword() {
 const isDark = computed(() => themeStore.theme === 'dark')
 
 const user = computed(() => auth.user)
+const isGroupeur = computed(() => auth.user?.role === 'freight_forwarder')
+
+// ── Payout accounts ─────────────────────────────────────────────────────────
+const payoutAccounts = ref<PayoutAccount[]>([])
+const payoutAccountsLoading = ref(false)
+const showPayoutSheet = ref(false)
+const payoutForm = reactive({ type: 'iban' as 'iban' | 'mobile_money', account_holder_name: '', iban: '', mobile_number: '', mobile_operator: 'mtn' as 'mtn' | 'orange', country_code: 'BE', is_default: false })
+const payoutFormLoading = ref(false)
+const payoutFormError = ref('')
+
+async function loadPayoutAccounts() {
+  if (!isGroupeur.value) return
+  payoutAccountsLoading.value = true
+  try {
+    const { data } = await payoutAccountsApi.getAll()
+    payoutAccounts.value = data
+  } catch {
+    // non-blocking
+  } finally {
+    payoutAccountsLoading.value = false
+  }
+}
+
+async function savePayoutAccount() {
+  payoutFormError.value = ''
+  payoutFormLoading.value = true
+  try {
+    await payoutAccountsApi.create({
+      type: payoutForm.type,
+      account_holder_name: payoutForm.account_holder_name,
+      iban:             payoutForm.type === 'iban' ? payoutForm.iban : undefined,
+      mobile_number:    payoutForm.type === 'mobile_money' ? payoutForm.mobile_number : undefined,
+      mobile_operator:  payoutForm.type === 'mobile_money' ? payoutForm.mobile_operator : undefined,
+      country_code: payoutForm.country_code,
+      is_default: payoutForm.is_default,
+    })
+    showPayoutSheet.value = false
+    toast.success('Compte de paiement ajouté.')
+    loadPayoutAccounts()
+  } catch (err) {
+    payoutFormError.value = apiError(err, 'Impossible d\'enregistrer le compte.')
+  } finally {
+    payoutFormLoading.value = false
+  }
+}
+
+async function removePayoutAccount(id: number) {
+  try {
+    await payoutAccountsApi.remove(id)
+    payoutAccounts.value = payoutAccounts.value.filter(a => a.account_id !== id)
+    toast.success('Compte supprimé.')
+  } catch (err) {
+    toast.error(apiError(err, 'Impossible de supprimer le compte.'))
+  }
+}
+
+async function setDefaultPayoutAccount(id: number) {
+  try {
+    await payoutAccountsApi.setDefault(id)
+    payoutAccounts.value = payoutAccounts.value.map(a => ({ ...a, is_default: a.account_id === id }))
+  } catch (err) {
+    toast.error(apiError(err, 'Impossible de définir le compte par défaut.'))
+  }
+}
+
+if (isGroupeur.value) loadPayoutAccounts()
 
 const initials = computed(() => {
   if (!user.value) return '??'
@@ -391,8 +461,196 @@ function confirmLogout() {
               </div>
             </label>
           </div>
+
+          <!-- Divider -->
+          <div class="h-px bg-[var(--glass-border)] mx-4" />
+
+          <!-- Currency selector -->
+          <div class="flex items-center gap-3 px-4 py-3.5">
+            <div class="w-9 h-9 rounded-[10px] bg-white/[0.06] border border-[var(--glass-border)] flex items-center justify-center shrink-0 text-[var(--primary)]">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="1" x2="12" y2="23"/>
+                <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+              </svg>
+            </div>
+            <div class="flex-1 flex flex-col gap-0.5">
+              <span class="text-sm font-semibold text-app-primary">Devise d'affichage</span>
+              <span class="text-xs text-app-muted">Les montants sont affichés dans cette devise</span>
+            </div>
+            <select
+              :value="currencyStore.preferredCode"
+              @change="currencyStore.setPreferred(($event.target as HTMLSelectElement).value)"
+              class="bg-[var(--glass-bg)] border border-[var(--glass-border)] text-app-primary text-[13px] font-semibold rounded-[10px] px-2 py-1.5 cursor-pointer outline-none"
+            >
+              <option v-for="c in currencyStore.currencies" :key="c.code" :value="c.code">
+                {{ c.symbol }} {{ c.code }}
+              </option>
+              <option v-if="currencyStore.currencies.length === 0" :value="currencyStore.preferredCode">
+                {{ currencyStore.preferredCode }}
+              </option>
+            </select>
+          </div>
         </div>
       </div>
+
+      <!-- Comptes de paiement (groupeur only) -->
+      <div v-if="isGroupeur" class="flex flex-col gap-2">
+        <h2 class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Comptes de paiement</h2>
+        <div class="glass rounded-[20px] overflow-hidden flex flex-col">
+
+          <!-- Skeleton loading -->
+          <div v-if="payoutAccountsLoading" class="px-4 py-4 flex flex-col gap-2">
+            <div class="skeleton h-[52px] rounded-[12px]" />
+          </div>
+
+          <!-- Account list -->
+          <template v-else>
+            <div
+              v-for="account in payoutAccounts"
+              :key="account.account_id"
+              class="flex items-center gap-3 px-4 py-3.5 border-b border-[var(--glass-border)] last:border-0"
+            >
+              <div class="w-9 h-9 rounded-[10px] bg-white/[0.06] border border-[var(--glass-border)] flex items-center justify-center shrink-0 text-app-muted">
+                <svg v-if="account.type === 'iban'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/>
+                </svg>
+                <svg v-else width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+                  <line x1="12" y1="18" x2="12.01" y2="18"/>
+                </svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-app-primary truncate">{{ account.account_holder_name }}</p>
+                <p class="text-xs text-app-muted truncate">
+                  <template v-if="account.type === 'iban'">{{ account.iban }}</template>
+                  <template v-else>{{ account.mobile_operator?.toUpperCase() }} · {{ account.mobile_number }}</template>
+                </p>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span v-if="account.is_default" class="text-[10px] font-semibold text-[var(--primary)] bg-[var(--primary-10)] border border-[var(--primary-25)] px-2 py-0.5 rounded-full">
+                  Principal
+                </span>
+                <button v-else @click="setDefaultPayoutAccount(account.account_id)" class="text-[11px] text-app-faint cursor-pointer bg-transparent border-none hover:text-app-muted">
+                  Définir défaut
+                </button>
+                <button @click="removePayoutAccount(account.account_id)" class="p-1 text-red-400/70 hover:text-red-400 cursor-pointer bg-transparent border-none transition-colors">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                    <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </template>
+
+          <!-- Add button -->
+          <button
+            @click="showPayoutSheet = true"
+            class="flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-colors active:bg-white/5 w-full text-left bg-transparent border-none border-t border-[var(--glass-border)]"
+          >
+            <div class="w-9 h-9 rounded-[10px] bg-[var(--primary-10)] border border-[var(--primary-25)] flex items-center justify-center shrink-0 text-[var(--primary)]">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </div>
+            <span class="text-sm font-semibold text-[var(--primary)]">Ajouter un compte</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Add payout account sheet -->
+      <ModalSheet v-model="showPayoutSheet" title="Ajouter un compte">
+        <div class="px-4 py-5 flex flex-col gap-4">
+
+          <!-- Type selector -->
+          <div class="flex gap-2">
+            <button
+              v-for="t in [{ value: 'iban', label: 'IBAN (Virement)' }, { value: 'mobile_money', label: 'Mobile Money' }]"
+              :key="t.value"
+              class="flex-1 py-2.5 rounded-[12px] text-[13px] font-semibold border transition-colors cursor-pointer"
+              :class="payoutForm.type === t.value
+                ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
+                : 'bg-transparent text-app-muted border-[var(--glass-border)] hover:border-[var(--primary-35)]'"
+              @click="payoutForm.type = t.value as 'iban' | 'mobile_money'"
+            >{{ t.label }}</button>
+          </div>
+
+          <!-- Account holder name -->
+          <div class="flex flex-col gap-1.5">
+            <label class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Titulaire du compte</label>
+            <input
+              v-model="payoutForm.account_holder_name"
+              type="text"
+              placeholder="Prénom Nom"
+              class="w-full px-3.5 py-3 rounded-[12px] bg-white/[0.05] border border-[var(--glass-border)] text-app-primary text-sm outline-none focus:border-[var(--primary-50)]"
+            />
+          </div>
+
+          <!-- IBAN field -->
+          <div v-if="payoutForm.type === 'iban'" class="flex flex-col gap-1.5">
+            <label class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">IBAN</label>
+            <input
+              v-model="payoutForm.iban"
+              type="text"
+              placeholder="BE68 5390 0754 7034"
+              class="w-full px-3.5 py-3 rounded-[12px] bg-white/[0.05] border border-[var(--glass-border)] text-app-primary text-sm font-mono outline-none focus:border-[var(--primary-50)]"
+            />
+          </div>
+
+          <!-- Mobile Money fields -->
+          <template v-if="payoutForm.type === 'mobile_money'">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Opérateur</label>
+              <div class="flex gap-2">
+                <button
+                  v-for="op in ['mtn', 'orange']"
+                  :key="op"
+                  class="flex-1 py-2.5 rounded-[12px] text-[13px] font-semibold border transition-colors cursor-pointer capitalize"
+                  :class="payoutForm.mobile_operator === op
+                    ? 'bg-[var(--primary)] text-white border-[var(--primary)]'
+                    : 'bg-transparent text-app-muted border-[var(--glass-border)] hover:border-[var(--primary-35)]'"
+                  @click="payoutForm.mobile_operator = op as 'mtn' | 'orange'"
+                >{{ op === 'mtn' ? 'MTN MoMo' : 'Orange Money' }}</button>
+              </div>
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Numéro mobile</label>
+              <input
+                v-model="payoutForm.mobile_number"
+                type="tel"
+                placeholder="+237 6XX XXX XXX"
+                class="w-full px-3.5 py-3 rounded-[12px] bg-white/[0.05] border border-[var(--glass-border)] text-app-primary text-sm outline-none focus:border-[var(--primary-50)]"
+              />
+            </div>
+          </template>
+
+          <!-- Country -->
+          <div class="flex flex-col gap-1.5">
+            <label class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.06em]">Pays</label>
+            <input
+              v-model="payoutForm.country_code"
+              type="text"
+              placeholder="BE / CM"
+              maxlength="2"
+              class="w-full px-3.5 py-3 rounded-[12px] bg-white/[0.05] border border-[var(--glass-border)] text-app-primary text-sm uppercase outline-none focus:border-[var(--primary-50)]"
+            />
+          </div>
+
+          <!-- Default -->
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input type="checkbox" v-model="payoutForm.is_default" class="w-4 h-4 accent-[var(--primary)]" />
+            <span class="text-sm text-app-muted">Définir comme compte principal</span>
+          </label>
+
+          <ErrorAlert v-if="payoutFormError" :message="payoutFormError" />
+        </div>
+
+        <template #footer>
+          <AppButton class="w-full" :loading="payoutFormLoading" loading-text="Enregistrement..." @click="savePayoutAccount">
+            Enregistrer le compte
+          </AppButton>
+        </template>
+      </ModalSheet>
 
       <!-- Aide et support -->
       <div class="flex flex-col gap-2">

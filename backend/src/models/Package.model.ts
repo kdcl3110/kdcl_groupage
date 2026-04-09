@@ -13,13 +13,15 @@ export const FRAGILITY_MULTIPLIER: Record<FragilityLevel, number> = {
 };
 
 export enum PackageStatus {
-  PENDING   = 'pending',
-  SUBMITTED = 'submitted',
-  IN_TRAVEL = 'in_travel',
-  IN_TRANSIT = 'in_transit',
-  DELIVERED  = 'delivered',
-  RETURNED   = 'returned',
-  CANCELLED  = 'cancelled',
+  PENDING          = 'pending',
+  SUBMITTED        = 'submitted',
+  AWAITING_PAYMENT = 'awaiting_payment', // groupeur accepted, client has 48h to pay
+  PAID             = 'paid',             // payment confirmed, waiting for travel departure
+  IN_TRAVEL        = 'in_travel',
+  IN_TRANSIT       = 'in_transit',
+  DELIVERED        = 'delivered',
+  RETURNED         = 'returned',
+  CANCELLED        = 'cancelled',
 }
 
 export interface PackageAttributes {

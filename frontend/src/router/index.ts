@@ -29,8 +29,9 @@ const router = createRouter({
     { path: '/forum/:id', component: () => import('@/views/ForumChatView.vue') },
     { path: '/profil', component: () => import('@/views/ProfilView.vue') },
     { path: '/groupeur/:id', component: () => import('@/views/GroupeurProfilView.vue'), meta: { public: false } },
-    { path: '/aide',         component: () => import('@/views/AideSupportView.vue') },
-    { path: '/a-propos',     component: () => import('@/views/AProposView.vue') },
+    { path: '/aide',                component: () => import('@/views/AideSupportView.vue') },
+    { path: '/a-propos',            component: () => import('@/views/AProposView.vue') },
+    { path: '/paiement/confirmation', component: () => import('@/views/PaiementConfirmationView.vue'), meta: { public: true } },
   ],
 })
 

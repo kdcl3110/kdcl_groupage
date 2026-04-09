@@ -1,26 +1,24 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, reactive } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import StatusBadge from '@/components/common/StatusBadge.vue'
-import ModalSheet from '@/components/common/ModalSheet.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
-import ErrorAlert from '@/components/common/ErrorAlert.vue'
 import AppButton from '@/components/common/AppButton.vue'
 import RefreshButton from '@/components/common/RefreshButton.vue'
 import FloatingActionButton from '@/components/common/FloatingActionButton.vue'
-import PhoneInput from '@/components/common/PhoneInput.vue'
-import ImagePicker from '@/components/common/ImagePicker.vue'
-import { AlertCircle, Package as PackageIcon, AlertTriangle, ShieldAlert } from 'lucide-vue-next'
+import PackageFormSheet from '@/components/package/PackageFormSheet.vue'
+import type { PackageFormPayload } from '@/components/package/PackageFormSheet.vue'
+import { AlertCircle, Package as PackageIcon } from 'lucide-vue-next'
 import { packagesApi } from '@/api/packages'
-import { recipientsApi } from '@/api/recipients'
-import { travelsApi } from '@/api/travels'
 import { useToastStore, apiError } from '@/stores/toast'
 import { useAuthStore } from '@/stores/auth'
-import type { Package, Recipient, Travel } from '@/types'
+import { useCurrencyStore } from '@/stores/currency'
+import type { Package } from '@/types'
 
 const router = useRouter()
 const auth = useAuthStore()
+const currencyStore = useCurrencyStore()
 const isClient = computed(() => auth.user?.role === 'client')
 
 // ─── List state ────────────────────────────────────────────────────────────
@@ -48,104 +46,11 @@ const filtered = computed(() => {
   return packages.value.filter(p => p.status === activeFilter.value)
 })
 
-// ─── Sheet / wizard state ───────────────────────────────────────────────────
+// ─── Sheet state ────────────────────────────────────────────────────────────
 const showSheet = ref(false)
-const step = ref(1)
 const formLoading = ref(false)
 const formError = ref('')
 const toast = useToastStore()
-
-// Step 1 — basic info
-const form = reactive({
-  description: '',
-  weight: '',
-  volume: '',
-  declared_value: '',
-  fragility: 'normal' as 'normal' | 'fragile' | 'tres_fragile',
-  special_instructions: '',
-})
-
-// Step 2 — recipient + images
-const recipients = ref<Recipient[]>([])
-const selectedRecipient = ref<Recipient | null>(null)
-const imgFiles    = ref<(File | null)[]>([null, null, null, null])
-const imgPreviews = ref<(string | null)[]>([null, null, null, null])
-
-function updateImgFile(i: number, file: File | null) {
-  if (imgPreviews.value[i]) URL.revokeObjectURL(imgPreviews.value[i]!)
-  imgFiles.value[i] = file
-  imgPreviews.value[i] = file ? URL.createObjectURL(file) : null
-}
-
-onUnmounted(() => {
-  imgPreviews.value.forEach((u) => { if (u) URL.revokeObjectURL(u) })
-})
-
-// New recipient inline form
-const showNewRecipient = ref(false)
-const newRecipientLoading = ref(false)
-const newRecipientError = ref('')
-const newRecipientPhoneValid = ref(false)
-const newRecipient = reactive({ first_name: '', last_name: '', phone: '', email: '', address: '', city: '', country: '' })
-
-function openNewRecipient() {
-  newRecipient.first_name = ''; newRecipient.last_name = ''; newRecipient.phone = ''
-  newRecipient.email = ''; newRecipient.address = ''; newRecipient.city = ''; newRecipient.country = ''
-  newRecipientError.value = ''
-  newRecipientPhoneValid.value = false
-  showNewRecipient.value = true
-}
-
-async function saveNewRecipient() {
-  newRecipientError.value = ''
-  if (!newRecipient.first_name || !newRecipient.last_name || !newRecipient.phone || !newRecipient.address || !newRecipient.city || !newRecipient.country) {
-    newRecipientError.value = 'Veuillez remplir tous les champs obligatoires.'
-    return
-  }
-  if (!newRecipientPhoneValid.value) {
-    newRecipientError.value = 'Veuillez entrer un numéro de téléphone valide.'
-    return
-  }
-  newRecipientLoading.value = true
-  try {
-    const { data } = await recipientsApi.create({
-      first_name: newRecipient.first_name,
-      last_name: newRecipient.last_name,
-      phone: newRecipient.phone,
-      email: newRecipient.email || null,
-      address: newRecipient.address,
-      city: newRecipient.city,
-      country: newRecipient.country,
-    })
-    recipients.value.push(data)
-    selectedRecipient.value = data
-    showNewRecipient.value = false
-  } catch (err: unknown) {
-    const e = err as { response?: { data?: { message?: string } } }
-    newRecipientError.value = e.response?.data?.message ?? 'Erreur lors de la création du destinataire.'
-  } finally {
-    newRecipientLoading.value = false
-  }
-}
-// Step 3 — travel
-const travels = ref<Travel[]>([])
-const selectedTravel = ref<Travel | null>(null)
-const noTravel = ref(false)
-
-// Validation
-const step1Valid = computed(
-  () =>
-    form.description.trim() &&
-    parseFloat(form.weight) > 0 &&
-    parseFloat(form.volume) > 0 &&
-    parseFloat(form.declared_value) >= 0,
-)
-const step2Valid = computed(() => selectedRecipient.value !== null && imgFiles.value[0] !== null)
-const step3Valid = computed(() => selectedTravel.value !== null || noTravel.value)
-
-function pkgDisplayStatus(pkg: Package) {
-  return pkg.status
-}
 
 // Data fetch
 async function fetchPackages(reset = true) {
@@ -173,94 +78,24 @@ async function fetchPackages(reset = true) {
   }
 }
 
-async function fetchFormData() {
-  try {
-    const [recRes, travRes] = await Promise.all([
-      recipientsApi.getAll(),
-      travelsApi.getAll({ status: 'open', limit: '200' }),
-    ])
-    recipients.value = recRes.data
-    travels.value = travRes.data.data
-  } catch {
-    // non-blocking
-  }
-}
-
-// Wizard navigation
-function openSheet() {
-  resetForm()
-  showSheet.value = true
-  fetchFormData()
-}
-
-function resetForm() {
-  step.value = 1
-  form.description = ''
-  form.weight = ''
-  form.volume = ''
-  form.declared_value = ''
-  form.fragility = 'normal'
-  form.special_instructions = ''
-  selectedRecipient.value = null
-  showNewRecipient.value = false
-  newRecipientError.value = ''
-  imgPreviews.value.forEach((u) => { if (u) URL.revokeObjectURL(u) })
-  imgFiles.value    = [null, null, null, null]
-  imgPreviews.value = [null, null, null, null]
-  selectedTravel.value = null
-  noTravel.value = false
-  formError.value = ''
-  formLoading.value = false
-}
-
-function nextStep() {
-  formError.value = ''
-  if (step.value === 1 && !step1Valid.value) {
-    formError.value = 'Veuillez remplir tous les champs obligatoires.'
-    return
-  }
-  if (step.value === 2 && !step2Valid.value) {
-    formError.value = 'Veuillez choisir un destinataire et ajouter au moins une photo.'
-    return
-  }
-  if (step.value < 4) step.value++
-}
-
-function prevStep() {
-  formError.value = ''
-  if (step.value > 1) step.value--
-}
-
-function selectTravel(t: Travel) {
-  selectedTravel.value = t
-  noTravel.value = false
-}
-
-function skipTravel() {
-  selectedTravel.value = null
-  noTravel.value = true
-}
-
-// Submit
-async function handleSubmit() {
+async function handleCreate(payload: PackageFormPayload) {
   formError.value = ''
   formLoading.value = true
   try {
     const fd = new FormData()
-    fd.append('description', form.description)
-    fd.append('weight', form.weight)
-    fd.append('volume', form.volume)
-    fd.append('declared_value', form.declared_value)
-    fd.append('fragility', form.fragility)
-    if (form.special_instructions) fd.append('special_instructions', form.special_instructions)
-    fd.append('recipient_id', String(selectedRecipient.value!.recipient_id))
-    if (selectedTravel.value) fd.append('travel_id', String(selectedTravel.value.travel_id))
-    imgFiles.value.forEach((file, i) => {
+    fd.append('description', payload.description)
+    fd.append('weight', payload.weight)
+    fd.append('volume', payload.volume)
+    fd.append('declared_value', payload.declared_value)
+    fd.append('fragility', payload.fragility)
+    if (payload.special_instructions) fd.append('special_instructions', payload.special_instructions)
+    fd.append('recipient_id', String(payload.recipient_id))
+    if (payload.travel_id) fd.append('travel_id', String(payload.travel_id))
+    payload.imgFiles.forEach((file, i) => {
       if (file) fd.append(`image${i + 1}`, file)
     })
     await packagesApi.create(fd)
     showSheet.value = false
-    resetForm()
     await fetchPackages()
     toast.success('Colis créé avec succès.')
   } catch (err: unknown) {
@@ -292,11 +127,6 @@ function formatDate(date: string) {
     month: 'short',
     year: 'numeric',
   })
-}
-
-function formatDateShort(date: string | null) {
-  if (!date) return '—'
-  return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
 }
 
 onMounted(fetchPackages)
@@ -389,7 +219,7 @@ onMounted(fetchPackages)
           <div class="p-4 flex flex-col gap-2.5 relative">
             <div class="absolute top-2 right-2">
 
-              <StatusBadge :status="pkgDisplayStatus(pkg)" />
+              <StatusBadge :status="pkg.status" />
             </div>
             <!-- Description -->
             <p class="text-[15px] font-semibold text-app-primary leading-snug">{{ pkg.description }}</p>
@@ -400,7 +230,7 @@ onMounted(fetchPackages)
               <span class="text-app-faint">·</span>
               <span>{{ pkg.volume }} m³</span>
               <span class="text-app-faint">·</span>
-              <span>{{ pkg.declared_value }} €</span>
+              <span>{{ currencyStore.formatAmount(pkg.declared_value) }}</span>
             </p>
 
             <!-- Footer row -->
@@ -422,385 +252,14 @@ onMounted(fetchPackages)
       </div>
     </div>
 
-    <FloatingActionButton aria-label="Nouveau colis" @click="openSheet" />
+    <FloatingActionButton aria-label="Nouveau colis" @click="showSheet = true" />
 
-    <!-- Wizard Sheet -->
-    <ModalSheet v-model="showSheet">
-      <template #header>
-        <div class="flex items-center gap-3">
-          <button
-            v-if="step > 1"
-            class="w-8 h-8 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer"
-            @click="prevStep"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polyline points="15 18 9 12 15 6"/>
-            </svg>
-          </button>
-          <h2 class="text-[17px] font-bold text-app-primary">
-            <span v-if="step === 1">Informations</span>
-            <span v-else-if="step === 2">Destinataire &amp; Photos</span>
-            <span v-else-if="step === 3">Choisir un voyage</span>
-            <span v-else>Récapitulatif</span>
-          </h2>
-        </div>
-      </template>
-
-      <!-- Step indicators -->
-      <div class="flex items-center justify-center gap-1.5 pt-4 px-5">
-        <div
-          v-for="i in 4"
-          :key="i"
-          class="h-1.5 rounded-full transition-all duration-300"
-          :class="i === step ? 'w-6 bg-[var(--primary)]' : i < step ? 'w-3 bg-[var(--primary-50)]' : 'w-3 bg-white/15'"
-        />
-      </div>
-
-      <!-- Scrollable content -->
-      <div class="px-5 pb-5 pt-4">
-
-                <!-- ── Step 1: Basic info ── -->
-                <div v-if="step === 1" class="flex flex-col gap-3.5">
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Description *</label>
-                    <input v-model="form.description" type="text" class="input-field" placeholder="Ex: Vêtements, électronique..." />
-                  </div>
-
-                  <div class="grid grid-cols-2 gap-3">
-                    <div class="flex flex-col gap-1.5">
-                      <label class="field-label">Poids (kg) *</label>
-                      <input v-model="form.weight" type="number" step="0.1" min="0.01" class="input-field" placeholder="0.0" />
-                    </div>
-                    <div class="flex flex-col gap-1.5">
-                      <label class="field-label">Volume (m³) *</label>
-                      <input v-model="form.volume" type="number" step="0.001" min="0.001" class="input-field" placeholder="0.00" />
-                    </div>
-                  </div>
-
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Valeur déclarée (€) *</label>
-                    <input v-model="form.declared_value" type="number" min="0" class="input-field" placeholder="0" />
-                  </div>
-
-                  <!-- Fragilité -->
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Fragilité *</label>
-                    <div class="grid grid-cols-3 gap-2">
-                      <button
-                        type="button"
-                        class="flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-[12px] border-[1.5px] text-[12px] font-semibold transition-all cursor-pointer"
-                        :class="form.fragility === 'normal'
-                          ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)]'
-                          : 'bg-transparent border-[var(--glass-border)] text-app-muted'"
-                        @click="form.fragility = 'normal'"
-                      >
-                        <PackageIcon :size="18" />
-                        Normal
-                      </button>
-                      <button
-                        type="button"
-                        class="flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-[12px] border-[1.5px] text-[12px] font-semibold transition-all cursor-pointer"
-                        :class="form.fragility === 'fragile'
-                          ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)]'
-                          : 'bg-transparent border-[var(--glass-border)] text-app-muted'"
-                        @click="form.fragility = 'fragile'"
-                      >
-                        <AlertTriangle :size="18" />
-                        Fragile
-                      </button>
-                      <button
-                        type="button"
-                        class="flex flex-col items-center gap-1.5 py-2.5 px-2 rounded-[12px] border-[1.5px] text-[12px] font-semibold transition-all cursor-pointer"
-                        :class="form.fragility === 'tres_fragile'
-                          ? 'bg-[var(--primary-10)] border-[var(--primary)] text-[var(--primary)]'
-                          : 'bg-transparent border-[var(--glass-border)] text-app-muted'"
-                        @click="form.fragility = 'tres_fragile'"
-                      >
-                        <ShieldAlert :size="18" />
-                        Très fragile
-                      </button>
-                    </div>
-                    <p class="text-[11px] text-app-faint">Les colis fragiles entraînent un supplément de prix.</p>
-                  </div>
-
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Instructions spéciales</label>
-                    <textarea
-                      v-model="form.special_instructions"
-                      class="input-field"
-                      style="min-height: 80px; resize: none;"
-                      placeholder="Fragile, température contrôlée..."
-                    />
-                  </div>
-
-                  <ErrorAlert :message="formError" />
-
-                  <AppButton :full="true" @click="nextStep">Suivant</AppButton>
-                </div>
-
-                <!-- ── Step 2: Recipient + Images ── -->
-                <div v-else-if="step === 2" class="flex flex-col gap-4">
-                  <!-- Recipient -->
-                  <div class="flex flex-col gap-2">
-                    <div class="flex items-center justify-between">
-                      <label class="field-label">Destinataire *</label>
-                      <button
-                        v-if="!showNewRecipient"
-                        type="button"
-                        class="flex items-center gap-1 text-xs font-semibold text-[var(--primary)] cursor-pointer bg-transparent border-none p-0 transition-opacity hover:opacity-70"
-                        @click="openNewRecipient"
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                        </svg>
-                        Nouveau
-                      </button>
-                    </div>
-
-                    <!-- Inline creation form -->
-                    <div v-if="showNewRecipient" class="flex flex-col gap-2.5 p-3.5 glass-subtle rounded-[14px] border border-[var(--primary-30)]">
-                      <div class="flex items-center justify-between mb-0.5">
-                        <p class="text-sm font-semibold text-app-primary">Nouveau destinataire</p>
-                        <button type="button" class="w-6 h-6 rounded-full glass flex items-center justify-center text-app-muted cursor-pointer border-none text-base leading-none" @click="showNewRecipient = false">×</button>
-                      </div>
-                      <div class="grid grid-cols-2 gap-2">
-                        <input v-model="newRecipient.first_name" type="text" class="input-field" placeholder="Prénom *" :disabled="newRecipientLoading" />
-                        <input v-model="newRecipient.last_name" type="text" class="input-field" placeholder="Nom *" :disabled="newRecipientLoading" />
-                      </div>
-                      <PhoneInput v-model="newRecipient.phone" placeholder="Téléphone *" :disabled="newRecipientLoading" @valid="newRecipientPhoneValid = $event" />
-                      <input v-model="newRecipient.email" type="email" class="input-field" placeholder="Email (optionnel)" :disabled="newRecipientLoading" />
-                      <input v-model="newRecipient.address" type="text" class="input-field" placeholder="Adresse *" :disabled="newRecipientLoading" />
-                      <div class="grid grid-cols-2 gap-2">
-                        <input v-model="newRecipient.city" type="text" class="input-field" placeholder="Ville *" :disabled="newRecipientLoading" />
-                        <input v-model="newRecipient.country" type="text" class="input-field" placeholder="Pays *" :disabled="newRecipientLoading" />
-                      </div>
-                      <div v-if="newRecipientError" class="text-[12px] text-red-400 px-1">{{ newRecipientError }}</div>
-                      <div class="flex gap-2 pt-1">
-                        <button
-                          type="button"
-                          class="flex-1 py-2 rounded-[10px] text-sm font-semibold text-app-muted border border-[var(--glass-border)] bg-transparent cursor-pointer transition-colors hover:text-app-primary"
-                          @click="showNewRecipient = false"
-                          :disabled="newRecipientLoading"
-                        >Annuler</button>
-                        <AppButton :loading="newRecipientLoading" loading-text="Création..." class="flex-1" @click="saveNewRecipient">Créer</AppButton>
-                      </div>
-                    </div>
-
-                    <!-- Recipient list -->
-                    <template v-else>
-                      <div v-if="recipients.length === 0" class="text-sm text-app-muted text-center py-4">
-                        Aucun destinataire. Créez-en un avec le bouton <strong>Nouveau</strong>.
-                      </div>
-                      <div v-else class="flex flex-col gap-2 max-h-[200px] overflow-y-auto scrollbar-hide">
-                        <div
-                          v-for="r in recipients"
-                          :key="r.recipient_id"
-                          class="flex items-center gap-3 px-3.5 py-3 rounded-[14px] cursor-pointer transition-all border"
-                          :class="selectedRecipient?.recipient_id === r.recipient_id
-                            ? 'bg-[var(--primary-15)] border-[var(--primary)]'
-                            : 'glass-subtle border-transparent'"
-                          @click="selectedRecipient = r"
-                        >
-                          <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary-30)] to-[var(--primary-15)] border border-[var(--primary-30)] flex items-center justify-center text-sm font-bold text-[var(--primary)] shrink-0">
-                            {{ r.first_name[0] }}{{ r.last_name[0] }}
-                          </div>
-                          <div class="flex-1 min-w-0">
-                            <p class="text-sm font-semibold text-app-primary truncate">{{ r.first_name }} {{ r.last_name }}</p>
-                            <p class="text-xs text-app-muted">{{ r.city }}, {{ r.country }}</p>
-                          </div>
-                          <div v-if="selectedRecipient?.recipient_id === r.recipient_id" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
-                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                          </div>
-                        </div>
-                      </div>
-                    </template>
-                  </div>
-
-                  <!-- Images -->
-                  <div class="flex flex-col gap-1.5">
-                    <label class="field-label">Photos du colis *</label>
-                    <p class="text-xs text-app-muted -mt-0.5">La première photo est obligatoire.</p>
-                    <div class="grid grid-cols-2 gap-2.5">
-                      <ImagePicker
-                        v-for="i in 4"
-                        :key="i"
-                        :model-value="imgFiles[i - 1]"
-                        :required="i === 1"
-                        :label="`Photo ${i}${i === 1 ? ' *' : ''}`"
-                        :disabled="formLoading"
-                        @update:model-value="updateImgFile(i - 1, $event)"
-                      />
-                    </div>
-                  </div>
-
-                  <ErrorAlert :message="formError" />
-
-                  <AppButton :full="true" @click="nextStep">Suivant</AppButton>
-                </div>
-
-                <!-- ── Step 3: Travel ── -->
-                <div v-else-if="step === 3" class="flex flex-col gap-3">
-                  <!-- Skip option -->
-                  <div
-                    class="flex items-center gap-3 px-3.5 py-3 rounded-[14px] cursor-pointer transition-all border"
-                    :class="noTravel ? 'bg-[var(--primary-15)] border-[var(--primary)]' : 'glass-subtle border-transparent'"
-                    @click="skipTravel"
-                  >
-                    <div class="w-9 h-9 rounded-full bg-white/[0.08] border border-[var(--glass-border)] flex items-center justify-center text-app-muted shrink-0">
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="12" cy="12" r="10"/>
-                        <line x1="8" y1="12" x2="16" y2="12"/>
-                      </svg>
-                    </div>
-                    <div class="flex-1">
-                      <p class="text-sm font-semibold text-app-primary">Aucun voyage pour l'instant</p>
-                      <p class="text-xs text-app-muted">Le colis sera en attente</p>
-                    </div>
-                    <div v-if="noTravel" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="20 6 9 17 4 12"/>
-                      </svg>
-                    </div>
-                  </div>
-
-                  <div v-if="travels.length === 0" class="py-6 text-center text-sm text-app-muted">
-                    Aucun voyage ouvert disponible.
-                  </div>
-
-                  <!-- Travel cards -->
-                  <div
-                    v-for="t in travels"
-                    :key="t.travel_id"
-                    class="rounded-[16px] p-4 cursor-pointer transition-all border flex flex-col gap-3"
-                    :class="selectedTravel?.travel_id === t.travel_id
-                      ? 'bg-[var(--primary-15)] border-[var(--primary)]'
-                      : 'glass-subtle border-transparent'"
-                    @click="selectTravel(t)"
-                  >
-                    <!-- Header row -->
-                    <div class="flex items-center justify-between">
-                      <div class="flex items-center gap-2">
-                        <!-- Transport icon -->
-                        <div class="w-8 h-8 rounded-lg bg-white/[0.08] border border-[var(--glass-border)] flex items-center justify-center text-app-muted shrink-0">
-                          <svg v-if="t.transport_type === 'ship'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M2 21c.6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1 .6.5 1.2 1 2.5 1 2.5 0 2.5-2 5-2 1.3 0 1.9.5 2.5 1"/>
-                            <path d="M19.38 20A11.6 11.6 0 0 0 21 14l-9-4-9 4c0 2.3.6 4.3 1.62 6"/>
-                            <path d="M12 10V2"/>
-                            <path d="M8 6l4-4 4 4"/>
-                          </svg>
-                          <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19 4c-1 0-2 .5-2.5 1L13 9 4.8 6.2c-.5-.2-1.1.1-1.3.6L2 8.7c-.2.5 0 1.1.4 1.4L6.5 13l-2 2H2l-1 1 3 3 1-1v-2l2-2 3.5 4c.3.4.9.6 1.4.4l2.1-1.5c.5-.2.8-.8.6-1.3z"/>
-                          </svg>
-                        </div>
-                        <div>
-                          <p class="text-sm font-bold text-app-primary">{{ t.origin.name }} → {{ t.destination.name }}</p>
-                          <p class="text-xs text-app-muted">{{ t.transport_type === 'ship' ? 'Maritime' : 'Aérien' }}</p>
-                        </div>
-                      </div>
-                      <div v-if="selectedTravel?.travel_id === t.travel_id" class="w-5 h-5 rounded-full bg-[var(--primary)] flex items-center justify-center shrink-0">
-                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="20 6 9 17 4 12"/>
-                        </svg>
-                      </div>
-                    </div>
-
-                    <!-- Dates -->
-                    <div class="flex items-center gap-3 text-xs text-app-muted">
-                      <span>Départ : <strong class="text-app-primary">{{ formatDateShort(t.departure_date) }}</strong></span>
-                      <span>·</span>
-                      <span>Arrivée : <strong class="text-app-primary">{{ formatDateShort(t.estimated_arrival_date) }}</strong></span>
-                    </div>
-
-                    <!-- Capacity bar -->
-                    <div class="flex flex-col gap-1">
-                      <div class="flex items-center justify-between text-[11px] text-app-muted">
-                        <span>{{ t.transport_type === 'ship' ? 'Volume' : 'Poids' }}</span>
-                        <span>{{ t.transport_type === 'ship' ? `${t.volume_fill_pct}%` : `${t.weight_fill_pct}%` }}</span>
-                      </div>
-                      <div class="h-1.5 rounded-full bg-white/[0.08]">
-                        <div
-                          class="h-full rounded-full bg-gradient-to-r from-[var(--primary)] to-[var(--primary-light)] transition-all"
-                          :style="{ width: `${t.transport_type === 'ship' ? t.volume_fill_pct : t.weight_fill_pct}%` }"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <AppButton :full="true" class="mt-1" :disabled="!step3Valid" @click="nextStep">Suivant</AppButton>
-                </div>
-
-                <!-- ── Step 4: Summary ── -->
-                <div v-else class="flex flex-col gap-3.5">
-                  <!-- Package info -->
-                  <div class="glass-subtle rounded-[16px] p-4 flex flex-col gap-2">
-                    <p class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.05em]">Colis</p>
-                    <p class="text-sm font-semibold text-app-primary">{{ form.description }}</p>
-                    <div class="flex gap-3 text-xs text-app-muted">
-                      <span>{{ form.weight }} kg</span>
-                      <span>·</span>
-                      <span>{{ form.volume }} m³</span>
-                      <span>·</span>
-                      <span>{{ form.declared_value }} €</span>
-                    </div>
-                    <p v-if="form.special_instructions" class="text-xs text-app-muted italic">{{ form.special_instructions }}</p>
-                  </div>
-
-                  <!-- Recipient -->
-                  <div class="glass-subtle rounded-[16px] p-4 flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-full bg-gradient-to-br from-[var(--primary-30)] to-[var(--primary-15)] border border-[var(--primary-30)] flex items-center justify-center text-sm font-bold text-[var(--primary)] shrink-0">
-                      {{ selectedRecipient!.first_name[0] }}{{ selectedRecipient!.last_name[0] }}
-                    </div>
-                    <div>
-                      <p class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.05em]">Destinataire</p>
-                      <p class="text-sm font-semibold text-app-primary">{{ selectedRecipient!.first_name }} {{ selectedRecipient!.last_name }}</p>
-                      <p class="text-xs text-app-muted">{{ selectedRecipient!.city }}, {{ selectedRecipient!.country }}</p>
-                    </div>
-                  </div>
-
-                  <!-- Travel -->
-                  <div class="glass-subtle rounded-[16px] p-4 flex flex-col gap-1">
-                    <p class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.05em]">Voyage</p>
-                    <template v-if="selectedTravel">
-                      <p class="text-sm font-semibold text-app-primary">{{ selectedTravel.origin.name }} → {{ selectedTravel.destination.name }}</p>
-                      <p class="text-xs text-app-muted">{{ selectedTravel.transport_type === 'ship' ? 'Maritime' : 'Aérien' }} · Départ {{ formatDateShort(selectedTravel.departure_date) }}</p>
-                    </template>
-                    <p v-else class="text-sm text-app-muted">Aucun voyage — colis en attente</p>
-                  </div>
-
-                  <!-- Images thumbnails -->
-                  <div class="flex flex-col gap-2">
-                    <p class="text-[11px] font-semibold text-app-muted uppercase tracking-[0.05em]">Photos</p>
-                    <div class="flex gap-2">
-                      <div
-                        v-for="(url, idx) in imgPreviews.filter(Boolean)"
-                        :key="idx"
-                        class="w-16 h-16 rounded-[10px] overflow-hidden border border-[var(--glass-border)] shrink-0"
-                      >
-                        <img :src="url!" class="w-full h-full object-cover" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <ErrorAlert :message="formError" />
-
-                  <AppButton :full="true" :loading="formLoading" loading-text="Création..." @click="handleSubmit">
-                    Confirmer et créer le colis
-                  </AppButton>
-                </div>
-
-      </div><!-- end scrollable -->
-    </ModalSheet>
+    <PackageFormSheet
+      v-model="showSheet"
+      mode="create"
+      :loading="formLoading"
+      :error="formError"
+      @submit="handleCreate"
+    />
   </AppLayout>
 </template>
-
-<style scoped>
-.field-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-</style>

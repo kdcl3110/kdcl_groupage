@@ -15,6 +15,9 @@ import countryRouter from './modules/country/country.router';
 import notificationRouter from './modules/notification/notification.router';
 import userRouter from './modules/user/user.router';
 import reportRouter from './modules/report/report.router';
+import paymentRouter from './modules/payment/payment.router';
+import payoutRouter from './modules/payout/payout.router';
+import currencyRouter from './modules/currency/currency.router';
 
 function createApp(): Application {
   const app = express();
@@ -51,7 +54,13 @@ function createApp(): Application {
   // Request logging
   app.use(morgan(env.isDev() ? 'dev' : 'combined'));
 
-  // Body parsing
+  // ── Body parsing ───────────────────────────────────────────────────────────
+  //
+  // Webhook routes (/payments/webhooks/*) register their own raw-body parsers
+  // (express.raw / express.text) INSIDE payment.router.ts and run before these
+  // global parsers, so they receive the unmodified payload needed for signature
+  // verification.  All other routes get the standard JSON parser below.
+  //
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -72,6 +81,9 @@ function createApp(): Application {
   app.use('/api/v1/notifications', notificationRouter);
   app.use('/api/v1/users', userRouter);
   app.use('/api/v1/reports', reportRouter);
+  app.use('/api/v1/payments', paymentRouter);
+  app.use('/api/v1/payouts', payoutRouter);
+  app.use('/api/v1/currencies', currencyRouter);
 
   // Error handling
   app.use(notFound);
