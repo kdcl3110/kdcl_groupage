@@ -140,6 +140,7 @@ export class PackageService {
     const pkg = await Package.findByPk(packageId);
     if (!pkg) throw new AppError(404, 'Package not found');
 
+    
     if (pkg.status !== PackageStatus.SUBMITTED) {
       throw new AppError(400, `Only submitted packages can be validated (current status: "${pkg.status}")`);
     }
@@ -510,7 +511,7 @@ export class PackageService {
     });
   }
 
-  // ─── Helpers privés ──────────────────────────────────────────────────────
+  //  Helpers privés
 
   private async checkCapacity(
     travelId: number,

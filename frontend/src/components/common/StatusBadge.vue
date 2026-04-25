@@ -18,6 +18,7 @@ const labelMap: Record<string, string> = {
   awaiting_payment: 'Paiement requis',
   paid:             'Payé',
   in_travel:        'En voyage',
+  at_warehouse:     'À l\'entrepôt',
   returned:         'Retourné',
 }
 

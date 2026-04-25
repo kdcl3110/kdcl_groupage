@@ -15,13 +15,13 @@ const route = useRoute()
 const showNotifications = ref(false)
 
 const userName = authStore.user
-  ? `${authStore.user.first_name} ${authStore.user.last_name}`
+  ? `${authStore.user.first_name}`
   : 'Utilisateur'
 
 const mainPaths = ['/voyages', '/colis', '/destinataires', '/forum', '/profil']
 const isMainPage = computed(() => mainPaths.includes(route.path))
 
-// ── SSE lifecycle + Page Visibility ──────────────────────────────────────────
+// SSE lifecycle + Page Visibility 
 
 function handleVisibilityChange() {
   if (document.visibilityState === 'hidden') {

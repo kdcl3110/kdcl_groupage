@@ -19,19 +19,21 @@ async function getPayoutService() {
 }
 
 const STATUS_MESSAGES: Record<TravelStatus, string> = {
-  [TravelStatus.OPEN]:       'Le voyage est de nouveau ouvert à la soumission de colis.',
-  [TravelStatus.FULL]:       'Le voyage est complet. Aucun colis supplémentaire ne peut être ajouté.',
-  [TravelStatus.IN_TRANSIT]: 'Le voyage est en transit. Vos colis sont en route vers la destination.',
-  [TravelStatus.DELIVERED]:  'Le voyage a été livré. Vos colis sont arrivés à destination.',
-  [TravelStatus.CANCELLED]:  'Le voyage a été annulé. Veuillez contacter votre groupeur pour plus d\'informations.',
+  [TravelStatus.OPEN]:         'Le voyage est de nouveau ouvert à la soumission de colis.',
+  [TravelStatus.FULL]:         'Le voyage est complet. Aucun colis supplémentaire ne peut être ajouté.',
+  [TravelStatus.IN_TRANSIT]:   'Le voyage est en transit. Vos colis sont en route vers la destination.',
+  [TravelStatus.AT_WAREHOUSE]: 'Les colis sont arrivés à l\'entrepôt de destination. La livraison va bientôt commencer.',
+  [TravelStatus.DELIVERED]:    'Le voyage a été livré. Vos colis sont arrivés à destination.',
+  [TravelStatus.CANCELLED]:    'Le voyage a été annulé. Veuillez contacter votre groupeur pour plus d\'informations.',
 };
 
 const STATUS_TRANSITIONS: Record<TravelStatus, TravelStatus[]> = {
-  [TravelStatus.OPEN]:       [TravelStatus.FULL, TravelStatus.IN_TRANSIT, TravelStatus.CANCELLED],
-  [TravelStatus.FULL]:       [TravelStatus.OPEN, TravelStatus.IN_TRANSIT, TravelStatus.CANCELLED],
-  [TravelStatus.IN_TRANSIT]: [TravelStatus.DELIVERED],
-  [TravelStatus.DELIVERED]:  [],
-  [TravelStatus.CANCELLED]:  [],
+  [TravelStatus.OPEN]:         [TravelStatus.FULL, TravelStatus.IN_TRANSIT, TravelStatus.CANCELLED],
+  [TravelStatus.FULL]:         [TravelStatus.OPEN, TravelStatus.IN_TRANSIT, TravelStatus.CANCELLED],
+  [TravelStatus.IN_TRANSIT]:   [TravelStatus.AT_WAREHOUSE],
+  [TravelStatus.AT_WAREHOUSE]: [TravelStatus.DELIVERED],
+  [TravelStatus.DELIVERED]:    [],
+  [TravelStatus.CANCELLED]:    [],
 };
 
 const PACKAGE_ATTRS = [
@@ -240,6 +242,18 @@ export class TravelService {
     if (next === TravelStatus.IN_TRANSIT) {
       if (!travel.departure_date) throw new AppError(400, 'Set a departure_date before moving to in_transit');
       if (!travel.container)      throw new AppError(400, 'Assign a container before moving to in_transit');
+
+      // Block if any packages are still awaiting payment
+      const unpaidCount = await Package.count({
+        where: { travel_id: travelId, status: PackageStatus.AWAITING_PAYMENT },
+      });
+      if (unpaidCount > 0) {
+        throw new AppError(
+          400,
+          `Ce voyage contient ${unpaidCount} colis en attente de paiement. ` +
+          `Retirez ces colis du voyage ou attendez que les paiements soient effectués avant de démarrer le transit.`,
+        );
+      }
     }
 
     if (next === TravelStatus.CANCELLED) {
@@ -250,7 +264,7 @@ export class TravelService {
 
     // Cascade sur les statuts des colis
     if (next === TravelStatus.IN_TRANSIT) {
-      // paid packages that weren't manually moved → auto-advance to in_travel then in_transit
+      // paid packages → auto-advance to in_travel then in_transit
       await Package.update(
         { status: PackageStatus.IN_TRAVEL },
         { where: { travel_id: travelId, status: PackageStatus.PAID } },
@@ -259,10 +273,16 @@ export class TravelService {
         { status: PackageStatus.IN_TRANSIT },
         { where: { travel_id: travelId, status: PackageStatus.IN_TRAVEL } },
       );
+    } else if (next === TravelStatus.AT_WAREHOUSE) {
+      // in_transit packages → at_warehouse
+      await Package.update(
+        { status: PackageStatus.AT_WAREHOUSE },
+        { where: { travel_id: travelId, status: PackageStatus.IN_TRANSIT } },
+      );
     } else if (next === TravelStatus.DELIVERED) {
       await Package.update(
         { status: PackageStatus.DELIVERED },
-        { where: { travel_id: travelId, status: PackageStatus.IN_TRANSIT } },
+        { where: { travel_id: travelId, status: PackageStatus.AT_WAREHOUSE } },
       );
       // Trigger payout asynchronously (non-blocking — errors are caught and logged inside)
       getPayoutService()

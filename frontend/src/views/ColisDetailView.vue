@@ -55,6 +55,7 @@ const statusSteps = [
   { key: 'paid',             label: 'Payé' },
   { key: 'in_travel',        label: 'En voyage' },
   { key: 'in_transit',       label: 'En transit' },
+  { key: 'at_warehouse',     label: 'Entrepôt' },
   { key: 'delivered',        label: 'Livré' },
 ]
 
@@ -67,7 +68,8 @@ const currentStepIndex = computed(() => {
   if (status === 'paid')              return 3
   if (status === 'in_travel')         return 4
   if (status === 'in_transit')        return 5
-  if (status === 'delivered')         return 6
+  if (status === 'at_warehouse')      return 6
+  if (status === 'delivered')         return 7
   return -1 // cancelled, returned
 })
 

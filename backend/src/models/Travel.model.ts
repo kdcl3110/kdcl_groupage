@@ -1,11 +1,12 @@
 import { DataTypes, Model, Optional, Sequelize } from 'sequelize';
 
 export enum TravelStatus {
-  OPEN = 'open',
-  FULL = 'full',
-  IN_TRANSIT = 'in_transit',
-  DELIVERED = 'delivered',
-  CANCELLED = 'cancelled',
+  OPEN         = 'open',
+  FULL         = 'full',
+  IN_TRANSIT   = 'in_transit',
+  AT_WAREHOUSE = 'at_warehouse',
+  DELIVERED    = 'delivered',
+  CANCELLED    = 'cancelled',
 }
 
 export enum TransportType {

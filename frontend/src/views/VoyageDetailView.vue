@@ -75,7 +75,10 @@ const STATUS_ACTIONS: Record<string, StatusAction[]> = {
     { target: 'cancelled',  label: 'Annuler le voyage',    desc: 'Annuler définitivement ce voyage',             style: 'danger',   icon: 'x'      },
   ],
   in_transit: [
-    { target: 'delivered',  label: 'Marquer livré',        desc: 'Les colis sont arrivés à destination',         style: 'primary',  icon: 'check'  },
+    { target: 'at_warehouse', label: 'Arrivé à l\'entrepôt', desc: 'Les colis sont arrivés à l\'entrepôt de destination', style: 'primary', icon: 'check' },
+  ],
+  at_warehouse: [
+    { target: 'delivered',    label: 'Marquer livré',         desc: 'Les colis ont été livrés aux destinataires',          style: 'primary', icon: 'check' },
   ],
 }
 
@@ -485,51 +488,54 @@ onMounted(fetchData)
       <template v-else-if="travel">
         <!-- Header card -->
         <div class="glass rounded-[20px] p-5 flex flex-col gap-4">
-          <div class="flex items-start justify-between gap-3">
-            <div>
-              <div class="flex items-center gap-2 text-app-muted">
-                <span class="text-lg font-bold text-app-primary">{{ travel.origin.name }}</span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="5" y1="12" x2="19" y2="12"/>
-                  <polyline points="12 5 19 12 12 19"/>
-                </svg>
-                <span class="text-lg font-bold text-app-primary">{{ travel.destination.name }}</span>
-              </div>
-              <p v-if="travel.itinerary" class="text-[13px] text-app-muted mt-1">{{ travel.itinerary }}</p>
+
+          <!-- Ligne 1 : route (pleine largeur, peut wrapper) -->
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xl font-extrabold text-app-primary leading-tight">{{ travel.origin.name }}</span>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-app-faint shrink-0">
+                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              </svg>
+              <span class="text-xl font-extrabold text-app-primary leading-tight">{{ travel.destination.name }}</span>
             </div>
-            <div class="flex items-center gap-2 shrink-0">
-              <StatusBadge :status="travel.status" />
-              <!-- Bouton changer le statut (groupeur uniquement) -->
+            <p v-if="travel.itinerary" class="text-[13px] text-app-muted mt-1">{{ travel.itinerary }}</p>
+          </div>
+
+          <!-- Ligne 2 : statut + actions (toujours alignés) -->
+          <div class="flex items-center justify-between gap-3 pt-1 border-t border-[var(--glass-border)]">
+            <StatusBadge :status="travel.status" />
+            <div class="flex items-center gap-1.5">
+              <!-- Changer le statut -->
               <button
                 v-if="isManager && travelActions.length > 0"
-                class="w-8 h-8 rounded-full glass flex items-center justify-center cursor-pointer border-none text-app-muted transition-colors hover:text-app-primary shrink-0"
+                class="flex items-center gap-1.5 px-3 py-1.5 rounded-full glass border border-[var(--glass-border)] text-[12px] font-semibold text-app-muted cursor-pointer transition-colors hover:text-app-primary hover:border-[var(--primary-35)]"
                 @click="showStatusSheet = true"
-                aria-label="Changer le statut du voyage"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="12" cy="12" r="3"/>
                   <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                 </svg>
+                Statut
               </button>
-              <!-- Bouton modifier (groupeur uniquement) -->
+              <!-- Modifier -->
               <button
                 v-if="canEdit"
-                class="w-8 h-8 rounded-full glass flex items-center justify-center cursor-pointer border-none text-app-muted transition-colors hover:text-app-primary shrink-0"
+                class="w-8 h-8 rounded-full glass border border-[var(--glass-border)] flex items-center justify-center cursor-pointer text-app-muted transition-colors hover:text-app-primary hover:border-[var(--primary-35)]"
                 @click="showEditSheet = true"
                 aria-label="Modifier le voyage"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
                   <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
                 </svg>
               </button>
-              <!-- Bouton partager -->
+              <!-- Partager -->
               <button
-                class="w-8 h-8 rounded-full glass flex items-center justify-center cursor-pointer border-none text-app-muted transition-colors hover:text-app-primary shrink-0"
+                class="w-8 h-8 rounded-full glass border border-[var(--glass-border)] flex items-center justify-center cursor-pointer text-app-muted transition-colors hover:text-app-primary hover:border-[var(--primary-35)]"
                 @click="shareTravel"
                 aria-label="Partager ce voyage"
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
                   <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
                 </svg>
@@ -558,15 +564,15 @@ onMounted(fetchData)
               <span class="text-[11px] font-medium text-app-muted uppercase tracking-[0.05em]">Créé le</span>
               <span class="text-sm font-semibold text-app-primary">{{ formatDate(travel.creation_date) }}</span>
             </div>
-            <div class="flex flex-col gap-0.5">
+            <div v-if="isManager" class="flex flex-col gap-0.5">
               <span class="text-[11px] font-medium text-app-muted uppercase tracking-[0.05em]">Colis</span>
               <span class="text-sm font-semibold text-app-primary">{{ travel.packages_count }}</span>
             </div>
           </div>
         </div>
 
-        <!-- Capacity card -->
-        <div class="glass rounded-[20px] p-5 flex flex-col gap-4">
+        <!-- Capacity card (managers only — révèle la capacité totale utilisée) -->
+        <div v-if="isManager" class="glass rounded-[20px] p-5 flex flex-col gap-4">
           <h3 class="text-base font-bold text-app-primary">Capacité</h3>
           <LoadBar
             v-if="travel.transport_type === 'ship'"
@@ -718,14 +724,17 @@ onMounted(fetchData)
           </div>
         </template>
 
-        <!-- ── All other packages ── -->
+        <!-- ── Packages list ── -->
+        <!-- Clients voient uniquement leurs propres colis (filtré côté backend) -->
         <div class="flex flex-col gap-2.5">
           <h3 class="text-base font-bold text-app-primary">
-            Colis associés ({{ otherPackages.length }})
+            <template v-if="isManager">Colis associés ({{ otherPackages.length }})</template>
+            <template v-else>Mes colis dans ce voyage</template>
           </h3>
 
           <div v-if="packages.length === 0" class="py-6 text-center text-sm text-app-muted">
-            Aucun colis pour ce voyage.
+            <template v-if="isManager">Aucun colis pour ce voyage.</template>
+            <template v-else>Vous n'avez aucun colis dans ce voyage.</template>
           </div>
           <div v-else-if="otherPackages.length === 0 && submittedPackages.length > 0" class="py-4 text-center text-sm text-app-muted">
             Aucun colis intégré pour l'instant.
@@ -736,8 +745,8 @@ onMounted(fetchData)
               v-for="pkg in otherPackages"
               :key="pkg.package_id"
               class="glass-subtle rounded-[14px] p-3.5 flex flex-col gap-1.5 transition-transform duration-100"
-              :class="isManager ? 'cursor-pointer active:scale-[0.99]' : ''"
-              @click="openPackageDetail(pkg)"
+              :class="isManager ? 'cursor-pointer active:scale-[0.99]' : 'cursor-pointer active:scale-[0.99]'"
+              @click="isManager ? openPackageDetail(pkg) : router.push(`/colis/${pkg.package_id}`)"
             >
               <div class="flex items-center justify-between">
                 <span class="text-[13px] font-bold text-[var(--primary)] font-mono tracking-[0.05em]">{{ pkg.tracking_number }}</span>

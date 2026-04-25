@@ -19,6 +19,7 @@ export enum PackageStatus {
   PAID             = 'paid',             // payment confirmed, waiting for travel departure
   IN_TRAVEL        = 'in_travel',
   IN_TRANSIT       = 'in_transit',
+  AT_WAREHOUSE     = 'at_warehouse',     // arrived at destination warehouse
   DELIVERED        = 'delivered',
   RETURNED         = 'returned',
   CANCELLED        = 'cancelled',
