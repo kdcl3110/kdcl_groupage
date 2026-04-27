@@ -25,7 +25,7 @@ const currencyStore = useCurrencyStore()
 const toast = useToastStore()
 const showLogoutDialog = ref(false)
 
-// ── Avatar ──────────────────────────────────────────────────────────────────
+// Avatar
 const avatarInput = ref<HTMLInputElement | null>(null)
 const avatarLoading = ref(false)
 
@@ -58,7 +58,7 @@ async function handleDeleteAvatar() {
   }
 }
 
-// ── Vérification email ───────────────────────────────────────────────────────
+// Vérification email
 const emailVerifLoading = ref(false)
 
 async function handleSendEmailVerification() {
@@ -73,7 +73,7 @@ async function handleSendEmailVerification() {
   }
 }
 
-// ── Edit profile sheet ───────────────────────────────────────────────────
+// Edit profile sheet
 const showProfileSheet = ref(false)
 const profileForm = reactive({
   first_name: '',
@@ -133,7 +133,7 @@ async function handleUpdateProfile() {
   }
 }
 
-// ── Change password sheet ─────────────────────────────────────────────────
+// Change password sheet
 const showPasswordSheet = ref(false)
 const pwForm = reactive({ current: '', next: '', confirm: '' })
 const pwError = ref('')
@@ -181,7 +181,7 @@ const isDark = computed(() => themeStore.theme === 'dark')
 const user = computed(() => auth.user)
 const isGroupeur = computed(() => auth.user?.role === 'freight_forwarder')
 
-// ── Payout accounts ─────────────────────────────────────────────────────────
+// Payout accounts
 const payoutAccounts = ref<PayoutAccount[]>([])
 const payoutAccountsLoading = ref(false)
 const showPayoutSheet = ref(false)

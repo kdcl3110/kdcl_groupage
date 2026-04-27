@@ -3,7 +3,24 @@ import { currencyService } from '../../services/currency.service';
 
 const router = Router();
 
-/** GET /currencies — list all supported currencies (public) */
+/**
+ * @openapi
+ * /currencies:
+ *   get:
+ *     tags: [Devises]
+ *     summary: Liste de toutes les devises supportées avec leur taux USD (public)
+ *     security: []
+ *     responses:
+ *       200:
+ *         description: Liste des devises
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status: { type: string }
+ *                 data:   { type: array, items: { $ref: '#/components/schemas/Currency' } }
+ */
 router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const currencies = await currencyService.getAll();

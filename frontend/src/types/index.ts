@@ -93,6 +93,7 @@ export type PackageStatus =
   | 'delivered'
   | 'returned'
   | 'cancelled'
+  | 'at_warehouse'
 
 export interface Package {
   package_id: number
@@ -157,8 +158,7 @@ export interface Notification {
   creation_date: string
 }
 
-// ─── Payment & Currency ──────────────────────────────────────────────────────
-
+// Payment & Currency
 export interface Currency {
   currency_id: number
   code: string    // 'USD', 'EUR', 'XAF'

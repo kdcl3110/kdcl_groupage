@@ -18,6 +18,9 @@ import reportRouter from './modules/report/report.router';
 import paymentRouter from './modules/payment/payment.router';
 import payoutRouter from './modules/payout/payout.router';
 import currencyRouter from './modules/currency/currency.router';
+import adminRouter from './modules/admin/admin.router';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './configs/swagger.config';
 
 function createApp(): Application {
   const app = express();
@@ -54,7 +57,7 @@ function createApp(): Application {
   // Request logging
   app.use(morgan(env.isDev() ? 'dev' : 'combined'));
 
-  // ── Body parsing ───────────────────────────────────────────────────────────
+  // Body parsing 
   //
   // Webhook routes (/payments/webhooks/*) register their own raw-body parsers
   // (express.raw / express.text) INSIDE payment.router.ts and run before these
@@ -72,6 +75,10 @@ function createApp(): Application {
     res.json({ status: 'ok', env: env.NODE_ENV });
   });
 
+  // API documentation
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+  app.get('/api-docs.json', (_req, res) => res.json(swaggerSpec));
+
   // API routes
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/packages', packageRouter);
@@ -84,6 +91,7 @@ function createApp(): Application {
   app.use('/api/v1/payments', paymentRouter);
   app.use('/api/v1/payouts', payoutRouter);
   app.use('/api/v1/currencies', currencyRouter);
+  app.use('/api/v1/admin', adminRouter);
 
   // Error handling
   app.use(notFound);

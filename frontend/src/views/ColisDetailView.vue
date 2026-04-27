@@ -77,7 +77,7 @@ const canCancel = computed(() =>
   pkg.value?.status === 'pending' || pkg.value?.status === 'submitted'
 )
 
-// ─── Payment ──────────────────────────────────────────────────────────────────
+// Payment
 const showPaymentSheet = ref(false)
 const canPay = computed(() => isClient.value && pkg.value?.status === 'awaiting_payment')
 const canEdit = computed(() => pkg.value?.status === 'pending')
@@ -153,7 +153,7 @@ const transportLabel = computed(() => {
   return travel.value.transport_type === 'ship' ? 'Maritime' : 'Aérien'
 })
 
-// ─── Submit to voyage ─────────────────────────────────────────────────────────
+// Submit to voyage
 const showVoyageSheet = ref(false)
 const availableVoyages = ref<Travel[]>([])
 const voyagesLoading = ref(false)
@@ -195,7 +195,7 @@ async function handleSubmit(travelId: number) {
   }
 }
 
-// ─── Edit sheet ───────────────────────────────────────────────────────────────
+// Edit sheet
 const showEditSheet = ref(false)
 const editLoading   = ref(false)
 const editError     = ref('')

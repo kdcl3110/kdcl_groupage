@@ -146,8 +146,7 @@ export class PayoutService {
     return payout.reload();
   }
 
-  // ─── Private ──────────────────────────────────────────────────────────────
-
+  // Private
   private async executePayout(
     payout: Payout,
     account: PayoutAccount,

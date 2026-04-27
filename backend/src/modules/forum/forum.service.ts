@@ -185,8 +185,7 @@ export class ForumService {
     };
   }
 
-  // ─── Helpers privés ──────────────────────────────────────────────────────────
-
+  // Helpers privés
   private async assertClientIsParticipant(travelId: number, clientId: number): Promise<void> {
     const pkg = await Package.findOne({
       where: {

@@ -21,7 +21,7 @@ const auth = useAuthStore()
 const currencyStore = useCurrencyStore()
 const isClient = computed(() => auth.user?.role === 'client')
 
-// ─── List state ────────────────────────────────────────────────────────────
+// List state
 const packages = ref<Package[]>([])
 const loading = ref(true)
 const loadingMore = ref(false)
@@ -30,7 +30,7 @@ const offset = ref(0)
 const PAGE_SIZE = 10
 const error = ref('')
 
-// ─── Status filters (client only) ───────────────────────────────────────────
+// Status filters (client only)
 const activeFilter = ref('all')
 const colisFilters = [
   { key: 'all',        label: 'Tous' },
@@ -46,7 +46,7 @@ const filtered = computed(() => {
   return packages.value.filter(p => p.status === activeFilter.value)
 })
 
-// ─── Sheet state ────────────────────────────────────────────────────────────
+// Sheet state
 const showSheet = ref(false)
 const formLoading = ref(false)
 const formError = ref('')
@@ -107,7 +107,7 @@ async function handleCreate(payload: PackageFormPayload) {
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Helpers
 const STATUS_COLORS: Record<string, string> = {
   pending:    '#9ca3af',
   in_travel:  '#81A6C6',

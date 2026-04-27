@@ -38,7 +38,7 @@ const inTravelPackages   = computed(() => packages.value.filter(p => p.status ==
 
 const travelId = computed(() => Number(route.params.id))
 
-// ─── Status management ───────────────────────────────────────────────────────
+// Status management
 const statusLoading = ref(false)
 const statusError = ref('')
 
@@ -52,7 +52,7 @@ const reassignTravelsLoading   = ref(false)
 const reassignTargetTravel     = ref<Travel | null>(null)
 const reassignLoading          = ref(false)
 
-// ─── Status sheet ─────────────────────────────────────────────────────────────
+// Status sheet
 const showStatusSheet = ref(false)
 
 type StatusAction = {
@@ -159,7 +159,7 @@ async function confirmCancelWithReassign() {
   }
 }
 
-// ─── Move package to another travel ──────────────────────────────────────────
+// Move package to another travel
 const showMoveSheet      = ref(false)
 const movingPkg          = ref<Package | null>(null)
 const moveTravels        = ref<Travel[]>([])
@@ -199,7 +199,7 @@ async function confirmMove() {
   }
 }
 
-// ─── Package status management ───────────────────────────────────────────────
+// Package status management
 const pkgStatusLoading = ref<Record<number, boolean>>({})
 const pkgStatusError = ref<Record<number, string>>({})
 
@@ -253,7 +253,7 @@ async function updatePackageStatus(pkg: Package, target: string) {
   }
 }
 
-// ─── Manager: package detail sheet ──────────────────────────────────────────
+// Manager: package detail sheet
 const showPkgDetail   = ref(false)
 const pkgDetail       = ref<Package | null>(null)
 const pkgDetailLoading = ref(false)
@@ -274,7 +274,7 @@ async function openPackageDetail(pkg: Package) {
   }
 }
 
-// ─── Client: submit pending package to this voyage ───────────────────────────
+// Client: submit pending package to this voyage
 const showSubmitSheet  = ref(false)
 const pendingPackages  = ref<Package[]>([])
 const pkgsLoading      = ref(false)
@@ -344,7 +344,7 @@ function shareTravel() {
   }
 }
 
-// ─── Edit travel ─────────────────────────────────────────────────────────────
+// Edit travel
 const showEditSheet = ref(false)
 const editLoading   = ref(false)
 const editError     = ref('')

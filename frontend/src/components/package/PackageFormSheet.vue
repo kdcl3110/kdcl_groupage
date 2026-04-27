@@ -46,10 +46,10 @@ const emit = defineEmits<{
 
 const open = defineModel<boolean>({ required: true })
 
-// ─── Step (create mode only) ──────────────────────────────────────────────────
+// Step (create mode only)
 const step = ref(1)
 
-// ─── Basic fields ─────────────────────────────────────────────────────────────
+// Basic fields
 const form = reactive({
   description: '',
   weight: '',
@@ -59,7 +59,7 @@ const form = reactive({
   special_instructions: '',
 })
 
-// ─── Recipients ───────────────────────────────────────────────────────────────
+// Recipients
 const recipients = ref<Recipient[]>([])
 const recipientsLoading = ref(false)
 const selectedRecipient = ref<Recipient | null>(null)
@@ -73,7 +73,7 @@ const newRecipient = reactive({
   first_name: '', last_name: '', phone: '', email: '', address: '', city: '', country: '',
 })
 
-// ─── Images ───────────────────────────────────────────────────────────────────
+// Images
 const imgFiles    = ref<(File | null)[]>([null, null, null, null])
 const imgPreviews = ref<(string | null)[]>([null, null, null, null])
 const imgRemoved  = ref<boolean[]>([false, false, false, false])
@@ -94,12 +94,12 @@ onUnmounted(() => {
   imgPreviews.value.forEach(u => { if (u) URL.revokeObjectURL(u) })
 })
 
-// ─── Travels (create mode only) ───────────────────────────────────────────────
+// Travels (create mode only)
 const travels = ref<Travel[]>([])
 const selectedTravel = ref<Travel | null>(null)
 const noTravel = ref(false)
 
-// ─── Validation ───────────────────────────────────────────────────────────────
+// Validation
 const step1Valid = computed(() =>
   form.description.trim() !== '' &&
   parseFloat(form.weight) > 0 &&
@@ -109,7 +109,7 @@ const step1Valid = computed(() =>
 const step2Valid = computed(() => selectedRecipient.value !== null && hasImage1.value)
 const step3Valid = computed(() => selectedTravel.value !== null || noTravel.value)
 
-// ─── Reset + open ─────────────────────────────────────────────────────────────
+// Reset + open
 function reset() {
   step.value = 1
   form.description = ''
@@ -159,7 +159,7 @@ watch(open, async (val) => {
   }
 })
 
-// ─── Wizard navigation ────────────────────────────────────────────────────────
+// Wizard navigation
 const stepError = ref('')
 
 function nextStep() {
@@ -183,7 +183,7 @@ function prevStep() {
 function selectTravel(t: Travel) { selectedTravel.value = t; noTravel.value = false }
 function skipTravel()             { selectedTravel.value = null; noTravel.value = true }
 
-// ─── New recipient ────────────────────────────────────────────────────────────
+// New recipient
 function openNewRecipient() {
   newRecipient.first_name = ''; newRecipient.last_name = ''; newRecipient.phone = ''
   newRecipient.email = ''; newRecipient.address = ''; newRecipient.city = ''; newRecipient.country = ''
@@ -225,7 +225,7 @@ async function saveNewRecipient() {
   }
 }
 
-// ─── Submit ───────────────────────────────────────────────────────────────────
+// Submit
 function doSubmit() {
   emit('submit', {
     description:        form.description,
@@ -241,7 +241,7 @@ function doSubmit() {
   })
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// Helpers
 function formatDateShort(date: string | null) {
   if (!date) return '—'
   return new Date(date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })
